@@ -363,67 +363,66 @@ export default function Sidebar({
     const isOpen = expanded.has(folder.id);
     const isDropTarget = dropTargetId === folder.id;
     return (
-      <div key={folder.id} className="rounded-md">
-        <div
-          className={`flex items-center gap-2 w-full rounded-md px-2 py-2 min-h-[38px] ${
-            isSelected ? "bg-accent-soft" : ""
-          } ${isDropTarget ? "ring-2 ring-[color:var(--mv-accent)] ring-offset-1 ring-offset-[color:var(--mv-panel-strong)]" : ""}`}
-          style={{ paddingLeft: 8 + depth * 12 }}
-          onDragOver={handleDragOverTarget(folder.id)}
-          onDrop={handleDropFiles(folder.id)}
-        >
-          {children.length ? (
-            <button
-              onClick={() => toggleExpand(folder.id)}
-              className="text-xs w-5 h-5 flex items-center justify-center rounded border border-transparent hover:border-panel-strong"
-              aria-label={isOpen ? "Collapse" : "Expand"}
-            >
-              {isOpen ? "▾" : "▸"}
-            </button>
-          ) : (
-            <span className="w-5 h-5" />
-          )}
-          <button className="flex-1 text-left truncate" onClick={() => onSelect(folder.id)} title={folderPath(folder)}>
-            {depth > 0 ? " - " : ""}
-            {folder.name || "Untitled"}
+      <div
+        key={folder.id}
+        className={`flex items-center gap-1.5 w-full rounded-md px-1.5 py-1.5 min-h-[32px] transition-smooth ${
+          isSelected ? "bg-accent-soft" : "hover:bg-panel-soft"
+        } ${isDropTarget ? "ring-2 ring-[color:var(--mv-accent)] ring-offset-1 ring-offset-[color:var(--mv-panel-strong)]" : ""}`}
+        style={{ paddingLeft: 6 + depth * 10 }}
+        onDragOver={handleDragOverTarget(folder.id)}
+        onDrop={handleDropFiles(folder.id)}
+      >
+        {children.length ? (
+          <button
+            onClick={() => toggleExpand(folder.id)}
+            className="text-xs w-4 h-4 flex items-center justify-center rounded border border-transparent hover:border-panel-strong shrink-0"
+            aria-label={isOpen ? "Collapse" : "Expand"}
+          >
+            {isOpen ? "▾" : "▸"}
           </button>
-          <div className="relative">
-            <details className="group">
-              <summary className="list-none w-8 h-8 rounded-md border border-panel-strong flex items-center justify-center text-xs cursor-pointer select-none">
-                ⋯
-              </summary>
-              <div className="absolute right-0 mt-1 min-w-[140px] rounded-md border border-panel bg-panel-strong shadow-lg z-10">
-                <button
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-panel-soft disabled:opacity-60"
-                  disabled={busy}
-                  onClick={(e) => { closeFolderMenu(e); startCreate(folder.id); }}
-                >
-                  + Subfolder
-                </button>
-                <button
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-panel-soft disabled:opacity-60"
-                  disabled={busy}
-                  onClick={(e) => { closeFolderMenu(e); startEdit(folder); }}
-                >
-                  Edit
-                </button>
-                <button
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-panel-soft disabled:opacity-60"
-                  disabled={busy}
-                  onClick={(e) => { closeFolderMenu(e); downloadFolder(folder); }}
-                >
-                  Zip download
-                </button>
-                <button
-                  className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/40 disabled:opacity-60"
-                  disabled={busy}
-                  onClick={(e) => { closeFolderMenu(e); remove(folder.id); }}
-                >
-                  Delete
-                </button>
-              </div>
-            </details>
-          </div>
+        ) : (
+          <span className="w-4 h-4 shrink-0" />
+        )}
+        <button className="flex-1 text-left truncate text-sm" onClick={() => onSelect(folder.id)} title={folderPath(folder)}>
+          {depth > 0 ? "– " : ""}
+          {folder.name || "Untitled"}
+        </button>
+        <div className="relative shrink-0">
+          <details className="group">
+            <summary className="list-none w-6 h-6 rounded-md border border-panel-strong flex items-center justify-center text-xs cursor-pointer select-none hover:bg-panel-soft">
+              ⋯
+            </summary>
+            <div className="absolute right-0 mt-1 min-w-[130px] rounded-md border border-panel bg-panel-strong shadow-md z-10 overflow-hidden">
+              <button
+                className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-panel-soft disabled:opacity-60"
+                disabled={busy}
+                onClick={(e) => { closeFolderMenu(e); startCreate(folder.id); }}
+              >
+                + Subfolder
+              </button>
+              <button
+                className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-panel-soft disabled:opacity-60"
+                disabled={busy}
+                onClick={(e) => { closeFolderMenu(e); startEdit(folder); }}
+              >
+                Edit
+              </button>
+              <button
+                className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-panel-soft disabled:opacity-60"
+                disabled={busy}
+                onClick={(e) => { closeFolderMenu(e); downloadFolder(folder); }}
+              >
+                Zip download
+              </button>
+              <button
+                className="w-full text-left px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/40 disabled:opacity-60"
+                disabled={busy}
+                onClick={(e) => { closeFolderMenu(e); remove(folder.id); }}
+              >
+                Delete
+              </button>
+            </div>
+          </details>
         </div>
         {isOpen && children.map(child => renderFolderNode(child, depth + 1))}
       </div>
@@ -432,67 +431,69 @@ export default function Sidebar({
 
   return (
     <aside
-      className="w-64 border-r border-panel p-3 flex flex-col gap-3"
-      onDragOver={handleSidebarDragOver}
-      onDragLeave={handleSidebarDragLeave}
-      onDrop={handleSidebarDrop}
+      className="w-56 border-r border-panel p-2.5 flex flex-col gap-2.5"
+    onDragOver={handleSidebarDragOver}
+    onDragLeave={handleSidebarDragLeave}
+    onDrop={handleSidebarDrop}
+  >
+    <div className="flex items-center justify-between">
+      <div className="text-xs text-muted font-medium">Folders</div>
+      <button className="text-xs px-2 py-1 rounded-md border border-panel-strong transition-smooth hover:bg-panel-soft" onClick={() => startCreate(null)}>New</button>
+    </div>
+
+    <button
+      className={`flex items-center gap-2 px-2 py-1.5 rounded-md border border-transparent text-sm transition-smooth ${
+        !selectedId ? "bg-accent-soft" : "hover:bg-panel-soft"
+      } ${dropTargetId === DROP_ALL_ID ? "border-accent ring-2 ring-[color:var(--mv-accent)] ring-offset-1 ring-offset-[color:var(--mv-panel-strong)]" : ""}`}
+      onClick={() => onSelect(null)}
+      onDragOver={handleDragOverTarget(DROP_ALL_ID)}
+      onDrop={handleDropFiles(null)}
     >
-      <div className="flex items-center justify-between">
-        <div className="text-xs text-muted">Location Manager</div>
-        <button className="text-sm px-2 py-1 rounded-md border border-panel-strong" onClick={() => startCreate(null)}>New</button>
-      </div>
+      <span>All Items</span>
+    </button>
 
-      <button
-        className={`flex items-center gap-2 px-2 py-1 rounded-md border border-transparent ${
-          !selectedId ? "bg-accent-soft" : ""
-        } ${dropTargetId === DROP_ALL_ID ? "border-accent ring-2 ring-[color:var(--mv-accent)] ring-offset-1 ring-offset-[color:var(--mv-panel-strong)]" : ""}`}
-        onClick={() => onSelect(null)}
-        onDragOver={handleDragOverTarget(DROP_ALL_ID)}
-        onDrop={handleDropFiles(null)}
-      >
-        <span>All Items</span>
-      </button>
-
-      <div className="flex flex-col gap-1">
-        {(childrenMap["__root"] || []).map(f => renderFolderNode(f, 0))}
-        {folders.length === 0 && <div className="text-sm opacity-60 px-2">No folders yet</div>}
-      </div>
+    <div className="flex flex-col gap-0.5">
+      {(childrenMap["__root"] || []).map(f => renderFolderNode(f, 0))}
+      {folders.length === 0 && <div className="text-xs text-muted px-2">No folders yet</div>}
+    </div>
 
       {creating && (
-        <div className="mt-2 flex flex-col gap-2">
+        <div className="mt-1 flex flex-col gap-1.5">
           <input
             value={newName}
             onChange={e=>setNewName(e.target.value)}
             placeholder="Folder name"
             className="px-2 py-1 text-sm rounded-md border border-panel-strong w-full bg-panel-strong text-foreground"
+            autoFocus
           />
           <select
             value={newParent || ""}
             onChange={e => setNewParent(e.target.value || null)}
-            className="px-2 py-1 text-sm rounded-md border border-panel-strong w-full bg-panel-strong text-foreground"
+            className="px-2 py-1 text-xs rounded-md border border-panel-strong w-full bg-panel-strong text-foreground"
           >
             {folderOptions.map(opt => (
               <option key={opt.id ?? "root"} value={opt.id || ""}>{opt.name}</option>
             ))}
           </select>
-          <div className="flex gap-2">
-            <button disabled={busy} className="text-sm px-3 py-1 rounded-md bg-accent flex-1" onClick={create}>Create</button>
-            <button className="text-sm px-3 py-1 rounded-md border border-panel-strong flex-1" onClick={()=>{ setCreating(false); setNewParent(null); }}>Cancel</button>
+          <div className="flex gap-1.5">
+            <button disabled={busy} className="text-xs px-2 py-1 rounded-md bg-accent flex-1" onClick={create}>Create</button>
+            <button className="text-xs px-2 py-1 rounded-md border border-panel-strong flex-1" onClick={()=>{ setCreating(false); setNewParent(null); }}>Cancel</button>
           </div>
         </div>
       )}
 
       {editing && (
-        <div className="mt-2 flex flex-col gap-2">
+        <div className="mt-1 flex flex-col gap-1.5">
           <input
             value={editName}
             onChange={e=>setEditName(e.target.value)}
             className="px-2 py-1 text-sm rounded-md border border-panel-strong bg-panel-strong text-foreground"
+            autoFocus
           />
           <select
             value={editParent || ""}
             onChange={e => setEditParent(e.target.value || null)}
-            className="px-2 py-1 text-sm rounded-md border border-panel-strong bg-panel-strong text-foreground"
+            className="px-2 py-1 text-xs rounded-md border border-panel-strong bg-panel-strong text-foreground"
           >
             {folderOptions
               .filter(opt => !editing || (opt.id !== editing && !(opt.id && isDescendant(opt.id, editing))))
@@ -501,9 +502,9 @@ export default function Sidebar({
               ))}
           </select>
           <TagInput value={editTags} onChange={setEditTags} placeholder="Add folder tags" />
-          <div className="flex items-center gap-2">
-            <button disabled={busy} className="text-sm px-2 py-1 rounded-md bg-accent" onClick={saveEdit}>Save</button>
-            <button className="text-sm px-2 py-1 rounded-md border border-panel-strong" onClick={()=>{ setEditing(null); setEditTags([]); setEditParent(null); }}>Cancel</button>
+          <div className="flex items-center gap-1.5">
+            <button disabled={busy} className="text-xs px-2 py-1 rounded-md bg-accent" onClick={saveEdit}>Save</button>
+            <button className="text-xs px-2 py-1 rounded-md border border-panel-strong" onClick={()=>{ setEditing(null); setEditTags([]); setEditParent(null); }}>Cancel</button>
           </div>
         </div>
       )}
@@ -512,7 +513,7 @@ export default function Sidebar({
         <button
           type="button"
           onClick={onOpenSettings}
-          className={`w-full flex items-center gap-2 px-2 py-2 rounded-md border ${
+          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md border text-sm transition-smooth ${
             activeView === "settings"
               ? "bg-accent-soft border-accent-soft"
               : "border-panel-strong hover:bg-panel-soft"
@@ -520,7 +521,7 @@ export default function Sidebar({
           aria-label="Settings"
         >
           <GearIcon className="w-4 h-4" />
-          <span className="text-sm">Settings</span>
+          <span>Settings</span>
         </button>
       </div>
       {zipPrompt.modal}

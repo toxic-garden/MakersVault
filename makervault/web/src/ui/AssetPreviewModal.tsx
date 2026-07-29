@@ -21,51 +21,51 @@ export default function AssetPreviewModal({
       onClick={onClose}
     >
       <div
-        className="bg-panel-strong rounded-lg shadow-2xl max-w-5xl w-full max-h-full overflow-hidden flex flex-col"
+        className="bg-panel-strong rounded-lg shadow-md max-w-5xl w-full max-h-full overflow-hidden flex flex-col"
         onClick={stop}
       >
-        <div className="flex items-center justify-between border-b border-panel px-4 py-3">
-          <div>
-            <h2 className="text-lg font-semibold">{asset.title || asset.filename}</h2>
-            <p className="text-sm opacity-70">
+        <div className="flex items-center justify-between border-b border-panel px-3 py-2.5">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold truncate">{asset.title || asset.filename}</h2>
+            <p className="text-xs text-muted">
               {asset.filename} · {formatFileSize(asset.size)}
             </p>
           </div>
           <button
-            className="px-3 py-1 rounded-md border border-panel-strong text-sm"
+            className="px-2.5 py-1 rounded-md border border-panel-strong text-sm transition-smooth hover:bg-panel-soft shrink-0"
             onClick={onClose}
           >
             Close
           </button>
         </div>
-        <div className="p-4 space-y-4 overflow-auto">
+        <div className="p-3 space-y-3 overflow-auto">
           <div className="w-full h-[70vh] min-h-[400px]">
             <div className="w-full h-full rounded-lg bg-panel-soft flex items-center justify-center overflow-hidden">
               {renderPreviewContent(asset, "modal", theme)}
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {asset.tags.length ? (
               asset.tags.map(tag => <TagBadge key={tag} tag={tag} />)
             ) : (
-              <span className="text-xs opacity-60">No tags</span>
+              <span className="text-xs text-subtle">No tags</span>
             )}
           </div>
           {asset.notes && (
-            <div className="text-sm border border-dashed border-panel-strong rounded-md p-3 whitespace-pre-wrap">
+            <div className="text-sm border border-dashed border-panel-strong rounded-md p-2.5 whitespace-pre-wrap">
               {asset.notes}
             </div>
           )}
-          <div className="flex gap-3">
+          <div className="flex gap-2">
             <a
-              className="px-3 py-2 rounded-md bg-accent text-sm"
+              className="px-3 py-1.5 rounded-md bg-accent text-sm transition-smooth hover:bg-accent-strong"
               href={fileUrl(asset.url)}
               download={asset.filename}
             >
               Download
             </a>
             <button
-              className="px-3 py-2 rounded-md border border-panel-strong text-sm"
+              className="px-3 py-1.5 rounded-md border border-panel-strong text-sm transition-smooth hover:bg-panel-soft"
               onClick={onClose}
             >
               Close

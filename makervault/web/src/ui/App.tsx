@@ -133,68 +133,68 @@ export default function App() {
 
   return (
     <div className="h-screen flex">
-      <Sidebar
-        selectedId={folderId}
-        onSelect={handleSelectFolder}
-        onFoldersChanged={handleFoldersChanged}
-        foldersVersion={folderVersion}
-        onAssetsChanged={handleAssetsChanged}
-        onUnauthorized={handleUnauthorized}
-        onOpenSettings={() => setActiveView("settings")}
-        activeView={activeView}
-      />
-      <main className="flex-1 p-4 overflow-auto">
-        {apiUp === false && (
-          <div className="mb-3 p-2 rounded-md bg-red-100 text-red-900 dark:bg-red-900/30 dark:text-red-100 flex flex-wrap items-center gap-2">
-            <span>API unreachable at {getApiBase()}. Ensure the API container is running and reachable.</span>
-            {!!settings.network.publicUrl && (
-              <button
-                className="px-2 py-1 rounded-md border border-red-400/70 text-xs font-medium"
-                onClick={resetSavedProxyUrl}
-                type="button"
-              >
-                Reset saved proxy URL
-              </button>
-            )}
-          </div>
-        )}
-        <header className="flex items-center justify-between mb-4 gap-4 flex-wrap">
-          {activeView === "library" && (
-            <img
-              src={logoForTheme(resolvedTheme)}
-              alt="Makers Vault"
-              className="h-40 w-auto max-w-[520px]"
-            />
-          )}
-          <div className="flex flex-wrap items-center gap-3">
-            {activeView === "library" ? (
-              <UploadBar
-                folderId={folderId}
-                makerworldCookie={settings.makerworld.cookie}
-                thingiverseCookie={settings.thingiverse.cookie}
-                onUploaded={handleAssetsChanged}
-                onUnauthorized={handleUnauthorized}
-              />
-            ) : (
-              <button
-                className="px-3 py-2 rounded-md border border-panel-strong text-sm"
-                onClick={() => setActiveView("library")}
-              >
-                Back to library
-              </button>
-            )}
+    <Sidebar
+      selectedId={folderId}
+      onSelect={handleSelectFolder}
+      onFoldersChanged={handleFoldersChanged}
+      foldersVersion={folderVersion}
+      onAssetsChanged={handleAssetsChanged}
+      onUnauthorized={handleUnauthorized}
+      onOpenSettings={() => setActiveView("settings")}
+      activeView={activeView}
+    />
+    <main className="flex-1 p-3 overflow-auto">
+      {apiUp === false && (
+        <div className="mb-2 p-2 rounded-md bg-red-100 text-red-900 dark:bg-red-900/30 dark:text-red-100 flex flex-wrap items-center gap-2 text-sm">
+          <span>API unreachable at {getApiBase()}. Ensure the API container is running and reachable.</span>
+          {!!settings.network.publicUrl && (
             <button
-              onClick={() => {
-                if (confirm("Are you sure you want to log out?")) {
-                  handleLogout();
-                }
-              }}
-              className="px-3 py-2 rounded-md border border-panel-strong text-sm"
+              className="px-2 py-1 rounded-md border border-red-400/70 text-xs font-medium"
+              onClick={resetSavedProxyUrl}
+              type="button"
             >
-              Log out
+              Reset saved proxy URL
             </button>
-          </div>
-        </header>
+          )}
+        </div>
+      )}
+      <header className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+        {activeView === "library" && (
+          <img
+            src={logoForTheme(resolvedTheme)}
+            alt="Makers Vault"
+            className="h-24 w-auto max-w-[420px]"
+          />
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {activeView === "library" ? (
+            <UploadBar
+              folderId={folderId}
+              makerworldCookie={settings.makerworld.cookie}
+              thingiverseCookie={settings.thingiverse.cookie}
+              onUploaded={handleAssetsChanged}
+              onUnauthorized={handleUnauthorized}
+            />
+          ) : (
+            <button
+              className="px-2.5 py-1.5 rounded-md border border-panel-strong text-sm transition-smooth hover:bg-panel"
+              onClick={() => setActiveView("library")}
+            >
+              Back to library
+            </button>
+          )}
+          <button
+            onClick={() => {
+              if (confirm("Are you sure you want to log out?")) {
+                handleLogout();
+              }
+            }}
+            className="px-2.5 py-1.5 rounded-md border border-panel-strong text-sm transition-smooth hover:bg-panel"
+          >
+            Log out
+          </button>
+        </div>
+      </header>
         {activeView === "library" ? (
           <AssetGrid
             key={`${nonce + (folderId||'')}-${folderVersion}`}

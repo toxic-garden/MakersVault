@@ -1,7 +1,7 @@
 from fastapi import BackgroundTasks, Depends, FastAPI, UploadFile, File, Form, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from starlette.middleware.cors import CORSMiddleware
-from sqlmodel import SQLModel, Session, select
+from sqlmodel import SQLModel, Session, select, or_
 from typing import List, Optional
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED, BadZipFile
@@ -396,6 +396,12 @@ def get_thumb(asset_id: str, _: AuthDep):
     return FileResponse(p)
 
 
+# Allowed file extensions — 3D printing and laser engraving only
+ALLOWED_EXTENSIONS = frozenset({
+    "stl", "3mf", "obj", "step", "stp", "svg", "lbrn", "dxf", "ai", "eps", "pdf",
+})
+
+
 def apply_asset_filters(stmt, q: Optional[str], tags: Optional[str], folder_id: Optional[str]):
     if q:
         qlike = f"%{q}%"
@@ -405,6 +411,9 @@ def apply_asset_filters(stmt, q: Optional[str], tags: Optional[str], folder_id: 
     tag_filter = [t.strip() for t in (tags or "").split(",") if t.strip()]
     for tag in tag_filter:
         stmt = stmt.where(Asset.tags_json.like(f'%"{tag}"%'))
+    # Filter to allowed filetypes only
+    ext_conditions = [Asset.filename.like(f"%.{ext}") for ext in ALLOWED_EXTENSIONS]
+    stmt = stmt.where(or_(*ext_conditions))
     return stmt
 
 
@@ -568,14 +577,15 @@ def rename_asset(asset_id: str, body: AssetRename, _: AuthDep):
 
 
 @app.delete("/asset/{asset_id}")
-def delete_asset(asset_id: str, _: AuthDep):
+def delete_asset(asset_id: str, keep_files: bool = Query(default=False), *, _: AuthDep):
     with Session(engine) as s:
         a = s.get(Asset, asset_id)
         if not a:
             raise HTTPException(404)
         s.delete(a)
         s.commit()
-    cleanup_asset(asset_id)
+    if not keep_files:
+        cleanup_asset(asset_id)
     return {"ok": True}
 
 

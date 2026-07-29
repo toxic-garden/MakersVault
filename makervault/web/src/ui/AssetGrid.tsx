@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Download, Trash2, X } from "lucide-react";
 import {
   Asset,
   Folder,
@@ -24,8 +25,8 @@ import { buildUploadEntriesFromZip, isZipFile, readZipEntries } from "../lib/zip
 import { useZipImportPrompt } from "./ZipImportModal";
 
 const ROWS_PER_BATCH = 5;
-const CARD_MIN_WIDTH_PX = 260;
-const GRID_GAP_PX = 16;
+const CARD_MIN_WIDTH_PX = 220;
+const GRID_GAP_PX = 12;
 
 function rowsBatchSizeForWidth(width: number) {
   const cols = Math.max(1, Math.floor((width + GRID_GAP_PX) / (CARD_MIN_WIDTH_PX + GRID_GAP_PX)));
@@ -234,6 +235,15 @@ export default function AssetGrid({
     }
     setDropUploading(false);
   };
+
+  // Debounced live search — triggers 300ms after the user stops typing
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      refresh({ search: q });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
 
   useEffect(() => { refresh(); }, [folderId]);
   useEffect(() => {
@@ -447,6 +457,15 @@ export default function AssetGrid({
     }
   };
 
+  const onSaveTitle = async (id: string, title: string) => {
+    try {
+      await updateAssetMeta(id, { title: title || null });
+      await refresh();
+    } catch (err) {
+      handleApiError(err, "Failed to save name. Please try again.");
+    }
+  };
+
   const onRename = async (id: string, filename: string) => {
     try {
       await renameAsset(id, filename);
@@ -508,21 +527,6 @@ export default function AssetGrid({
     }
   };
 
-  const downloadByTag = async (tag: string) => {
-    if (!tag) return;
-    try {
-      setBulkDownloading(`tag:${tag}`);
-      const res = await downloadZip({ tag });
-      await saveResponseToDisk(res, `${tag}.zip`);
-    } catch (err) {
-      if (!handleApiError(err, "Download by tag failed.")) {
-        console.error(err);
-      }
-    } finally {
-      setBulkDownloading(null);
-    }
-  };
-
   const removeAsset = async (asset: Asset) => {
     const targets = selectedIds.has(asset.id) && selectedIds.size > 1
       ? Array.from(selectedIds)
@@ -558,6 +562,40 @@ export default function AssetGrid({
     setDeletingId(null);
   };
 
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteKeepFiles, setDeleteKeepFiles] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const deleteSelected = async () => {
+    if (!selectedIds.size) return;
+    setBulkDeleting(true);
+    const failed: string[] = [];
+    let aborted = false;
+    for (const targetId of selectedIds) {
+      try {
+        await deleteAsset(targetId, deleteKeepFiles);
+      } catch (err) {
+        if (err instanceof UnauthorizedError) {
+          onUnauthorized?.();
+          aborted = true;
+          break;
+        }
+        console.error(err);
+        failed.push(itemById[targetId]?.filename || targetId);
+      }
+    }
+    if (!aborted) {
+      await refresh();
+      setSelectedIds(new Set());
+    }
+    if (failed.length) {
+      alert(`Delete failed for: ${failed.join(", ")}`);
+    }
+    setBulkDeleting(false);
+    setShowDeleteDialog(false);
+    setDeleteKeepFiles(false);
+  };
+
   const showDropOverlay = dragActive || dropUploading;
   const dropMessage = dropUploading
     ? `Uploading to ${dropTargetName}...`
@@ -573,13 +611,14 @@ export default function AssetGrid({
     >
       {showDropOverlay && (
         <div className="absolute inset-0 z-40 flex items-center justify-center rounded-lg border-2 border-dashed border-accent bg-panel-overlay pointer-events-none">
-          <div className="px-4 py-3 rounded-md border border-panel-strong bg-panel-strong shadow-sm text-sm">
+          <div className="px-3 py-2 rounded-md border border-panel-strong bg-panel-strong shadow-md text-sm">
             {dropMessage}
           </div>
         </div>
       )}
-      <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex flex-col gap-3">
+      {/* Unified toolbar — all controls h-8 px-3 text-sm */}
+      <div className="flex items-center gap-2 flex-wrap">
         <input
           value={q}
           onChange={e=>setQ(e.target.value)}
@@ -589,21 +628,24 @@ export default function AssetGrid({
               refresh({ search: val });
             }
           }}
-          placeholder="Search title, filename, notes..."
-          className="px-3 py-2 rounded-md border border-panel-strong bg-panel-soft w-80"
+          placeholder="Search title, filename, notes… (live)"
+          className="h-8 px-3 rounded-md border border-panel-strong bg-panel-soft text-sm flex-1 max-w-xs min-w-[160px]"
         />
-        <button
-          className="px-3 py-2 rounded-md border border-panel-strong disabled:opacity-60"
-          onClick={() => refresh({ search: q })}
-          disabled={loading}
-        >
-          Search
-        </button>
-        {loading && <span className="text-sm opacity-70">Loading...</span>}
-        <div className="flex items-center gap-2 text-sm">
-          <span className="opacity-70">Sort</span>
+        {loading && <span className="text-xs text-muted">Loading…</span>}
+        {sortedItems.length > 0 && (
+          <button
+            className="h-8 px-3 rounded-md border border-panel-strong text-sm transition-smooth hover:bg-panel"
+            onClick={() => setSelectedIds(new Set(sortedItems.map(it => it.id)))}
+            disabled={selectedIds.size === sortedItems.length}
+            title="Select all items currently loaded"
+          >
+            Select all
+          </button>
+        )}
+        <div className="flex items-center gap-1.5 ml-auto">
+          <span className="text-xs text-muted">Sort</span>
           <select
-            className="px-2 py-1 rounded-md border border-panel-strong bg-panel-soft"
+            className="h-8 px-3 rounded-md border border-panel-strong bg-panel-soft text-sm"
             value={sortKey}
             onChange={e => setSortKey(e.target.value as typeof sortKey)}
           >
@@ -615,22 +657,55 @@ export default function AssetGrid({
           <button
             type="button"
             onClick={() => setSortDir(prev => (prev === "asc" ? "desc" : "asc"))}
-            className="px-2 py-1 rounded-md border border-panel-strong"
+            className="h-8 px-3 rounded-md border border-panel-strong text-sm transition-smooth hover:bg-panel"
           >
             {sortDir === "asc" ? "Asc" : "Desc"}
           </button>
         </div>
       </div>
 
+      {selectedIds.size > 0 && (
+        <div className="sticky top-0 z-30 flex items-center gap-2 h-10 px-3 rounded-lg border border-accent bg-panel-strong shadow-md">
+          <span className="text-sm font-medium">
+            {selectedIds.size} selected
+          </span>
+          <div className="flex-1" />
+          <button
+            className="flex items-center gap-1.5 h-8 px-3 rounded-md border border-panel-strong text-sm font-medium transition-smooth hover:bg-panel disabled:opacity-60"
+            onClick={downloadSelected}
+            disabled={Boolean(bulkDownloading)}
+          >
+            <Download className="w-4 h-4" />
+            {bulkDownloading === "selected" ? "Preparing…" : "Download selected"}
+          </button>
+          <button
+            className="flex items-center gap-1.5 h-8 px-3 rounded-md border border-red-300 text-red-600 dark:text-red-300 text-sm font-medium transition-smooth hover:bg-red-50 dark:hover:bg-red-900/30 disabled:opacity-60"
+            onClick={() => setShowDeleteDialog(true)}
+            disabled={bulkDeleting}
+          >
+            <Trash2 className="w-4 h-4" />
+            {bulkDeleting ? "Deleting…" : "Delete selected"}
+          </button>
+          <button
+            className="flex items-center gap-1 h-8 px-3 rounded-md border border-panel-strong text-sm transition-smooth hover:bg-panel"
+            onClick={() => setSelectedIds(new Set())}
+            title="Clear selection"
+          >
+            <X className="w-4 h-4" />
+            Clear
+          </button>
+        </div>
+      )}
+
       {!!allTags.length && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {allTags.map(t => {
             const colors = colorForTag(t);
             const active = activeTags.includes(t);
             return (
               <button
                 key={t}
-                className={`px-2 py-1 rounded-full text-sm border transition-colors ${
+                className={`px-2.5 py-1 rounded-full text-xs border transition-smooth ${
                   active ? "ring-2 ring-offset-1 ring-[color:var(--mv-accent)] ring-offset-[color:var(--mv-bg)]" : ""
                 }`}
                 style={{
@@ -646,7 +721,7 @@ export default function AssetGrid({
           })}
           {activeTags.length>0 && (
             <button
-              className="px-2 py-1 rounded-full text-sm border border-panel-strong"
+              className="px-2.5 py-1 rounded-full text-xs border border-panel-strong"
               onClick={() => { setActiveTags([]); refresh({ tags: [] }); }}
             >
               Reset
@@ -654,9 +729,8 @@ export default function AssetGrid({
           )}
         </div>
       )}
-
       {["folder", "type"].includes(sortKey) ? (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {(sortKey === "folder" ? folderGroups : typeGroups).map(group => {
             const collapsed = collapsedGroups.has(group.id);
             return (
@@ -665,24 +739,25 @@ export default function AssetGrid({
                 className="rounded-lg border border-panel bg-panel-soft"
               >
                 <button
-                  className="w-full flex items-center justify-between px-4 py-3 text-left"
+                  className="w-full flex items-center justify-between px-3 py-2 text-left"
                   onClick={() => toggleGroup(group.id)}
                 >
                   <div>
-                    <div className="font-medium">{group.title}</div>
-                    <div className="text-xs opacity-70">{group.items.length} item{group.items.length === 1 ? "" : "s"}</div>
+                    <div className="font-medium text-sm">{group.title}</div>
+                    <div className="text-xs text-muted">{group.items.length} item{group.items.length === 1 ? "" : "s"}</div>
                   </div>
-                  <span className="text-sm opacity-70">{collapsed ? "Show" : "Hide"}</span>
+                  <span className="text-xs text-muted">{collapsed ? "Show" : "Hide"}</span>
                 </button>
                 {!collapsed && (
-                  <div className="px-4 pb-4 overflow-x-auto">
-                    <div className="flex gap-4 min-h-[280px]">
+                  <div className="px-3 pb-3 overflow-x-auto">
+                    <div className="flex gap-3 min-h-[240px]">
                       {group.items.map(it => (
-                        <div key={it.id} className="min-w-[260px] max-w-[320px]">
+                        <div key={it.id} className="min-w-[220px] max-w-[300px]">
                           <AssetCard
                             item={it}
                             onSaveTags={onSaveTags}
                             onSaveNotes={onSaveNotes}
+                            onSaveTitle={onSaveTitle}
                             onRename={onRename}
                             onPreview={setPreviewItem}
                             onDownloadSingle={downloadAsset}
@@ -692,11 +767,8 @@ export default function AssetGrid({
                             onMoveFolder={onMoveFolder}
                             folderOptions={folderOptions}
                             moving={movingId === it.id}
-                            onDownloadByTag={downloadByTag}
-                            onDownloadSelected={downloadSelected}
                             selected={selectedIds.has(it.id)}
                             onToggleSelected={() => toggleSelected(it.id)}
-                            hasSelection={selectedIds.size > 0}
                             bulkDownloading={Boolean(bulkDownloading)}
                             theme={theme}
                           />
@@ -713,13 +785,14 @@ export default function AssetGrid({
           })}
         </div>
       ) : (
-        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
+        <div className="grid gap-3 items-start" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
           {sortedItems.map(it => (
             <AssetCard
               key={it.id}
               item={it}
               onSaveTags={onSaveTags}
               onSaveNotes={onSaveNotes}
+              onSaveTitle={onSaveTitle}
               onRename={onRename}
               onPreview={setPreviewItem}
               onDownloadSingle={downloadAsset}
@@ -729,11 +802,8 @@ export default function AssetGrid({
               onMoveFolder={onMoveFolder}
               folderOptions={folderOptions}
               moving={movingId === it.id}
-              onDownloadByTag={downloadByTag}
-              onDownloadSelected={downloadSelected}
               selected={selectedIds.has(it.id)}
               onToggleSelected={() => toggleSelected(it.id)}
-              hasSelection={selectedIds.size > 0}
               bulkDownloading={Boolean(bulkDownloading)}
               theme={theme}
             />
@@ -741,22 +811,74 @@ export default function AssetGrid({
         </div>
       )}
       {hasMore && (
-        <div className="flex justify-center pt-2">
+        <div className="flex justify-center pt-1">
           <button
-            className="px-4 py-2 rounded-md border border-panel-strong text-sm disabled:opacity-60"
+            className="h-8 px-3 rounded-md border border-panel-strong text-sm disabled:opacity-60 transition-smooth hover:bg-panel"
             onClick={loadMore}
             disabled={loadingMore}
           >
-            {loadingMore ? "Loading..." : "Load more"}
+            {loadingMore ? "Loading…" : "Load more"}
           </button>
         </div>
       )}
       {previewItem && (
         <AssetPreviewModal asset={previewItem} theme={theme} onClose={() => setPreviewItem(null)} />
       )}
+      {showDeleteDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => !bulkDeleting && setShowDeleteDialog(false)}>
+          <div
+            className="rounded-lg border border-panel-strong bg-panel-strong shadow-lg p-5 max-w-sm w-full mx-4 flex flex-col gap-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2.5">
+              <Trash2 className="w-5 h-5 text-red-500 shrink-0" />
+              <h2 className="text-base font-semibold">Delete {selectedIds.size} selected {selectedIds.size === 1 ? "item" : "items"}?</h2>
+            </div>
+            <p className="text-sm text-muted">
+              This will remove {selectedIds.size === 1 ? "the asset" : "these assets"} from your library.
+            </p>
+            <label className="flex items-start gap-2.5 text-sm cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={deleteKeepFiles}
+                onChange={e => setDeleteKeepFiles(e.target.checked)}
+                disabled={bulkDeleting}
+                className="mt-0.5 w-4 h-4 accent-[color:var(--mv-accent)]"
+              />
+              <span>
+                <span className="font-medium">Keep files on disk</span>
+                <span className="block text-xs text-muted mt-0.5">
+                  Only remove database records. The original files remain in storage and can be re-imported later.
+                </span>
+              </span>
+            </label>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                className="h-8 px-3 rounded-md border border-panel-strong text-sm transition-smooth hover:bg-panel disabled:opacity-60"
+                onClick={() => { setShowDeleteDialog(false); setDeleteKeepFiles(false); }}
+                disabled={bulkDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                className="h-8 px-3 rounded-md bg-red-600 text-white text-sm font-medium transition-smooth hover:bg-red-700 disabled:opacity-60"
+                onClick={deleteSelected}
+                disabled={bulkDeleting}
+              >
+                {bulkDeleting ? "Deleting…" : deleteKeepFiles ? "Remove from library" : "Delete permanently"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {zipPrompt.modal}
       </div>
     </div>
   );
+}
+
+function extOf(name: string) {
+  const match = /\.([^.]+)$/.exec(name || "");
+  return (match?.[1] || "").toLowerCase();
 }
 

@@ -343,8 +343,10 @@ export async function updateAssetMeta(id: string, payload: { title?: string | nu
   return res.json();
 }
 
-export async function deleteAsset(id: string) {
-  const res = await fetch(`${apiBase()}/asset/${id}`, { method: "DELETE", headers: authHeaders() });
+export async function deleteAsset(id: string, keepFiles = false) {
+  const url = new URL(`${apiBase()}/asset/${id}`, window.location.origin);
+  url.searchParams.set("keep_files", String(keepFiles));
+  const res = await fetch(url.toString(), { method: "DELETE", headers: authHeaders() });
   assertOk(res, "Delete asset failed");
   return res.json();
 }

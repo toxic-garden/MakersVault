@@ -192,18 +192,18 @@ export default function UploadBar({ onUploaded, folderId, makerworldCookie, thin
         className="hidden"
       />
       <button
-        className="px-3 py-2 rounded-md bg-accent hover:bg-accent-strong disabled:opacity-60"
+        className="h-8 px-3 rounded-md bg-accent hover:bg-accent-strong disabled:opacity-60 text-sm transition-smooth"
         disabled={isBusy}
         onClick={() => inputRef.current?.click()}
       >
-        {uploading ? "Uploading..." : "Upload"}
+        {uploading ? "Uploading…" : "Upload"}
       </button>
       <button
-        className="px-3 py-2 rounded-md border border-panel-strong disabled:opacity-60"
+        className="h-8 px-3 rounded-md border border-panel-strong disabled:opacity-60 text-sm transition-smooth hover:bg-panel"
         disabled={isBusy}
         onClick={() => folderInputRef.current?.click()}
       >
-        {uploading ? "Uploading..." : "Upload folder"}
+        {uploading ? "Uploading…" : "Upload folder"}
       </button>
       <div className="flex items-center gap-2">
         <input
@@ -216,16 +216,16 @@ export default function UploadBar({ onUploaded, folderId, makerworldCookie, thin
               onImport();
             }
           }}
-          placeholder="Paste model link (MakerWorld, Printables, Thingiverse...)"
-          className="px-3 py-2 rounded-md border border-panel-strong bg-panel-soft w-80"
+          placeholder="Paste model link (MakerWorld, Printables, Thingiverse…)"
+          className="h-8 px-3 rounded-md border border-panel-strong bg-panel-soft text-sm flex-1 min-w-[200px] max-w-xs"
           disabled={isBusy}
         />
         <button
-          className="px-3 py-2 rounded-md border border-panel-strong disabled:opacity-60"
+          className="h-8 px-3 rounded-md border border-panel-strong disabled:opacity-60 text-sm transition-smooth hover:bg-panel"
           disabled={isBusy || !linkValue.trim()}
           onClick={onImport}
         >
-          {importing ? "Importing..." : "Import link"}
+          {importing ? "Importing…" : "Import link"}
         </button>
       </div>
     </div>

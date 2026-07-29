@@ -1,1 +1,3 @@
 makervault/.roo/*
+makervault/api/__pycache__
+makervault/web/node_modules
