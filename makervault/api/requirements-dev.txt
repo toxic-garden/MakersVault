@@ -1,0 +1,7 @@
+# Test-only dependencies for the MakerVault API.
+# Install with: pip install -r requirements-dev.txt
+# Run with:    cd api && pytest
+-r requirements.txt
+pytest==8.3.3
+httpx==0.27.2
+pytest-asyncio==0.24.0

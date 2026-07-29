@@ -81,12 +81,17 @@ def cleanup_asset(asset_id: str) -> None:
         if a:
             s.delete(a)
             s.commit()
+    # Each cleanup step in its own try-block so one failure cannot block
+    # the others (e.g. a non-empty asset dir must not prevent thumb removal).
+    ap = STORAGE / asset_id
     try:
-        ap = STORAGE / asset_id
         if ap.exists():
             for child in ap.iterdir():
                 child.unlink(missing_ok=True)
             ap.rmdir()
+    except Exception:
+        pass
+    try:
         (THUMBS / f"{asset_id}.jpg").unlink(missing_ok=True)
     except Exception:
         pass

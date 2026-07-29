@@ -1,5 +1,5 @@
 import React from "react";
-import { AppSettings, ENGRAVER_OPTIONS, SLICER_OPTIONS, THEME_OPTIONS, ThemeId } from "../lib/settings";
+import { AppSettings, THEME_OPTIONS, ThemeId } from "../lib/settings";
 import { UnauthorizedError, createFolder, getMountImportSettings, updateMountImportSettings } from "../lib/api";
 import { entriesFromFileList, uploadEntriesToFolder, type UploadEntry } from "../lib/uploadTree";
 
@@ -12,7 +12,7 @@ type Props = {
   onSelectFolder?: (id: string | null) => void;
 };
 
-type Section = "root" | "slicer" | "engraving" | "theme" | "network" | "imports";
+type Section = "root" | "theme" | "network" | "imports";
 
 const THEME_SWATCHES: Record<ThemeId, string> = {
   system: "linear-gradient(135deg, #f8fafc 0%, #f8fafc 50%, #0b0f19 50%, #0b0f19 100%)",
@@ -223,24 +223,6 @@ export default function Settings({
     }
   };
 
-  const updateSlicer = (patch: Partial<AppSettings["slicer"]>) => {
-    onChange({
-      ...settings,
-      slicer: {
-        ...settings.slicer,
-        ...patch,
-      },
-    });
-  };
-  const updateEngraving = (patch: Partial<AppSettings["engraving"]>) => {
-    onChange({
-      ...settings,
-      engraving: {
-        ...settings.engraving,
-        ...patch,
-      },
-    });
-  };
   const updateTheme = (selected: ThemeId) => {
     onChange({
       ...settings,
@@ -368,138 +350,6 @@ export default function Settings({
     setScanEntries(entries);
     setScanSkipped(skipped);
   }, [scanRawEntries, scanRoot]);
-
-  if (section === "slicer") {
-    return (
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-semibold">Slicer</h2>
-            <p className="text-sm opacity-70">Control the Open in Slicer button for 3D files.</p>
-          </div>
-          <button
-            className="text-sm px-3 py-2 rounded-md border border-panel-strong"
-            onClick={() => setSection("root")}
-          >
-            Back
-          </button>
-        </div>
-
-        <div className="rounded-lg border border-panel bg-panel-soft p-4 flex flex-col gap-4">
-          <p className="text-xs opacity-70">
-            Requires the Slicer Bridge helper to be installed on each client to register
-            the makersvault-slicer:// protocol. Download the installer from{" "}
-            <a
-              className="underline"
-              href="https://github.com/VincentCinque/MakersVault/releases/latest"
-              target="_blank"
-              rel="noreferrer"
-            >
-              MakerVault releases
-            </a>
-            . On Linux, mark the download as executable if prompted.
-          </p>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={settings.slicer.enabled}
-              onChange={e => updateSlicer({ enabled: e.target.checked })}
-              className="w-4 h-4"
-            />
-            <span>Enable Open in Slicer</span>
-          </label>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-xs uppercase tracking-wide text-muted">
-              Preferred slicer
-            </label>
-            <select
-              value={settings.slicer.selected}
-              onChange={e => updateSlicer({ selected: e.target.value })}
-              disabled={!settings.slicer.enabled}
-              className="px-2 py-1 rounded-md border border-panel-strong bg-panel-strong text-sm"
-            >
-              {SLICER_OPTIONS.map(opt => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <p className="text-xs opacity-70">
-            The Open in Slicer button launches the custom protocol with a signed download URL.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (section === "engraving") {
-    return (
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-semibold">Engraving Software</h2>
-            <p className="text-sm opacity-70">Control the Open in Engraving Software button for laser-ready files.</p>
-          </div>
-          <button
-            className="text-sm px-3 py-2 rounded-md border border-panel-strong"
-            onClick={() => setSection("root")}
-          >
-            Back
-          </button>
-        </div>
-
-        <div className="rounded-lg border border-panel bg-panel-soft p-4 flex flex-col gap-4">
-          <p className="text-xs opacity-70">
-            Requires the Bridge helper to be installed on each client to register
-            the makersvault-engrave:// protocol. Download the installer from{" "}
-            <a
-              className="underline"
-              href="https://github.com/VincentCinque/MakersVault/releases/latest"
-              target="_blank"
-              rel="noreferrer"
-            >
-              MakerVault releases
-            </a>
-            . On Linux, mark the download as executable if prompted.
-          </p>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={settings.engraving.enabled}
-              onChange={e => updateEngraving({ enabled: e.target.checked })}
-              className="w-4 h-4"
-            />
-            <span>Enable Open in Engraving Software</span>
-          </label>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-xs uppercase tracking-wide text-muted">
-              Preferred engraving software
-            </label>
-            <select
-              value={settings.engraving.selected}
-              onChange={e => updateEngraving({ selected: e.target.value })}
-              disabled={!settings.engraving.enabled}
-              className="px-2 py-1 rounded-md border border-panel-strong bg-panel-strong text-sm"
-            >
-              {ENGRAVER_OPTIONS.map(opt => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <p className="text-xs opacity-70">
-            The Open in Engraving Software button launches the custom protocol with a signed download URL.
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   if (section === "theme") {
     return (
@@ -956,22 +806,6 @@ export default function Settings({
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-3 sm:grid-cols-2">
-        <button
-          className="text-left rounded-lg border border-panel bg-panel-soft p-4 hover:shadow"
-          onClick={() => setSection("slicer")}
-        >
-          <div className="text-xs uppercase tracking-wide text-muted">Slicer</div>
-          <div className="text-lg font-semibold">Open in Slicer</div>
-          <div className="text-sm opacity-70">Pick a slicer for 3D model downloads.</div>
-        </button>
-        <button
-          className="text-left rounded-lg border border-panel bg-panel-soft p-4 hover:shadow"
-          onClick={() => setSection("engraving")}
-        >
-          <div className="text-xs uppercase tracking-wide text-muted">Engraving</div>
-          <div className="text-lg font-semibold">Open in Engraving Software</div>
-          <div className="text-sm opacity-70">Pick a laser app for vector and image files.</div>
-        </button>
         <button
           className="text-left rounded-lg border border-panel bg-panel-soft p-4 hover:shadow"
           onClick={() => setSection("theme")}

@@ -7,11 +7,13 @@ from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED, BadZipFile
 import tempfile
 import threading
+from typing import Annotated, List, Optional
 from urllib.parse import quote, urlparse
 import json
 import os
 import jwt
 from jwt import PyJWTError
+from fastapi import Depends
 
 from auth import (
     AUTH_ENABLED,
@@ -23,8 +25,8 @@ from auth import (
     create_token,
     require_auth,
 )
-from asset_service import asset_path, save_thumb
-from config import MOUNT_IMPORT_ENABLED, MOUNT_IMPORT_PATH, MOUNT_IMPORT_COPY
+from asset_service import asset_path, cleanup_asset, finalize_asset_record, save_thumb, stream_response_to_file
+from config import IMPORT_MAX_BYTES, MOUNT_IMPORT_ENABLED, MOUNT_IMPORT_PATH, MOUNT_IMPORT_COPY
 from db import STORAGE, THUMBS, engine, ensure_folder_parent_column, ensure_asset_source_path_column, ensure_asset_indexes
 from file_utils import build_import_filename, mime_from_content_type, sanitize_filename
 from folder_service import validate_parent_folder
@@ -61,6 +63,22 @@ from zip_service import extract_zip_entries_to_assets, list_zip_entries
 from url_utils import normalize_import_url
 
 app = FastAPI(title="MakerVault API")
+
+# Module-level dependency singletons
+AuthDep = Annotated[Optional[str], Depends(require_auth)]
+_IMAGE_THUMB_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+
+
+def build_mount_import_response() -> MountImportSettingsOut:
+    return MountImportSettingsOut(
+        enabled=get_mount_import_enabled(MOUNT_IMPORT_ENABLED),
+        copy_files=get_mount_import_copy(MOUNT_IMPORT_COPY),
+        path=MOUNT_IMPORT_PATH or None,
+    )
+
+
+def is_thumb_eligible(mime: Optional[str], suffix: str) -> bool:
+    return bool(mime and mime.startswith("image/") and suffix.lower() in _IMAGE_THUMB_EXTS)
 
 
 def normalize_origin(raw: str) -> Optional[str]:
@@ -195,23 +213,15 @@ def health():
 
 
 @app.get("/settings/mount-import", response_model=MountImportSettingsOut)
-def get_mount_import_settings(_: Optional[str] = Depends(require_auth)):
-    return MountImportSettingsOut(
-        enabled=get_mount_import_enabled(MOUNT_IMPORT_ENABLED),
-        copy_files=get_mount_import_copy(MOUNT_IMPORT_COPY),
-        path=MOUNT_IMPORT_PATH or None,
-    )
+def get_mount_import_settings(_: AuthDep):
+    return build_mount_import_response()
 
 
 @app.post("/settings/mount-import", response_model=MountImportSettingsOut)
-def update_mount_import_settings(body: MountImportSettings, _: Optional[str] = Depends(require_auth)):
+def update_mount_import_settings(body: MountImportSettings, _: AuthDep):
     set_mount_import_enabled(body.enabled)
     set_mount_import_copy(body.copy_files)
-    return MountImportSettingsOut(
-        enabled=get_mount_import_enabled(MOUNT_IMPORT_ENABLED),
-        copy_files=get_mount_import_copy(MOUNT_IMPORT_COPY),
-        path=MOUNT_IMPORT_PATH or None,
-    )
+    return build_mount_import_response()
 
 
 @app.post("/login", response_model=LoginResponse)
@@ -241,6 +251,57 @@ def refresh_token(token: Optional[str] = Depends(require_auth)):
     return LoginResponse(token=new_token, expires_in=AUTH_TOKEN_TTL)
 
 
+async def persist_uploaded_asset(
+    file: UploadFile,
+    title: Optional[str],
+    notes: Optional[str],
+    tags: Optional[str],
+    folder_id: Optional[str],
+) -> Asset:
+    """Mirror of `persist_asset_from_response` for the multipart upload path.
+
+    Inserts with size=0, streams the body to disk, optionally creates a thumbnail,
+    then patches size/mime. On any failure the partial row + storage dir is removed.
+    """
+    safe_name = sanitize_filename(file.filename)
+    mime = file.content_type or "application/octet-stream"
+    parsed_tags = [t.strip() for t in (tags or "").split(",") if t.strip()]
+    asset = Asset(
+        filename=safe_name,
+        mime=mime,
+        size=0,
+        title=title,
+        notes=notes,
+        tags_json=json.dumps(parsed_tags),
+        folder_id=folder_id,
+    )
+    with Session(engine) as s:
+        s.add(asset)
+        s.commit()
+        s.refresh(asset)
+
+    dest = asset_path(asset.id, asset.filename)
+    size = 0
+    try:
+        with open(dest, "wb") as f:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > IMPORT_MAX_BYTES:
+                    raise HTTPException(status_code=413, detail="Uploaded file exceeds size limit")
+                f.write(chunk)
+        if is_thumb_eligible(asset.mime, dest.suffix):
+            save_thumb(asset.id, dest)
+    except Exception:
+        cleanup_asset(asset.id)
+        raise
+
+    finalized = finalize_asset_record(asset.id, size, mime)
+    return finalized or asset
+
+
 @app.post("/upload", response_model=AssetOut)
 async def upload(
     file: UploadFile = File(...),
@@ -248,60 +309,21 @@ async def upload(
     notes: Optional[str] = Form(default=None),
     tags: Optional[str] = Form(default=None),  # comma-separated
     folder_id: Optional[str] = Form(default=None),
-    _: Optional[str] = Depends(require_auth),
+    _: AuthDep = None,
 ):
-    safe_name = sanitize_filename(file.filename)
-    asset = Asset(
-        filename=safe_name,
-        mime=file.content_type or "application/octet-stream",
-        size=0,
-        title=title,
-        notes=notes,
-        tags_json=json.dumps([t.strip() for t in (tags or "").split(",") if t.strip()]),
-        folder_id=folder_id,
-    )
-
-    with Session(engine) as s:
-        s.add(asset)
-        s.commit()
-        s.refresh(asset)
-
-    # persist file
-    dest = asset_path(asset.id, asset.filename)
-    with open(dest, "wb") as f:
-        while True:
-            chunk = await file.read(1024 * 1024)
-            if not chunk:
-                break
-            f.write(chunk)
-    size = dest.stat().st_size
-
-    # make a thumbnail for common image formats
-    if (asset.mime or "").lower().startswith("image/") and dest.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
-        save_thumb(asset.id, dest)
-
-    # update size
-    with Session(engine) as s:
-        db_a = s.get(Asset, asset.id)
-        if db_a:
-            db_a.size = size
-            s.add(db_a)
-            s.commit()
-            s.refresh(db_a)
-            asset = db_a
-
+    asset = await persist_uploaded_asset(file, title, notes, tags, folder_id)
     return to_out(asset)
 
 
 @app.post("/import", response_model=AssetOut)
-def import_from_link(body: ImportRequest, _: Optional[str] = Depends(require_auth)):
+def import_from_link(body: ImportRequest, _: AuthDep):
     url = normalize_import_url(body.url)
     asset = import_asset_from_url(url, body)
     return to_out(asset)
 
 
 @app.post("/import/inspect", response_model=ImportInspectOut)
-def inspect_import_link(body: ImportRequest, _: Optional[str] = Depends(require_auth)):
+def inspect_import_link(body: ImportRequest, _: AuthDep):
     url = normalize_import_url(body.url)
     resp, final_url = open_import_response(url, body)
     with resp:
@@ -312,7 +334,7 @@ def inspect_import_link(body: ImportRequest, _: Optional[str] = Depends(require_
 
 
 @app.post("/import/zip/entries", response_model=ImportZipEntriesOut)
-def list_import_zip_entries(body: ImportZipEntriesRequest, _: Optional[str] = Depends(require_auth)):
+def list_import_zip_entries(body: ImportZipEntriesRequest, _: AuthDep):
     url = normalize_import_url(body.url)
     tmp_path, filename, _ = download_import_to_temp(url, body)
     try:
@@ -330,7 +352,7 @@ def list_import_zip_entries(body: ImportZipEntriesRequest, _: Optional[str] = De
 
 
 @app.post("/import/zip", response_model=ImportZipResult)
-def import_zip_entries(body: ImportZipExtractRequest, _: Optional[str] = Depends(require_auth)):
+def import_zip_entries(body: ImportZipExtractRequest, _: AuthDep):
     url = normalize_import_url(body.url)
     tmp_path, filename, _ = download_import_to_temp(url, body)
     try:
@@ -346,7 +368,7 @@ def import_zip_entries(body: ImportZipExtractRequest, _: Optional[str] = Depends
 
 
 @app.get("/file/{asset_id}/{name}")
-def get_file(asset_id: str, name: str, _: Optional[str] = Depends(require_auth)):
+def get_file(asset_id: str, name: str, _: AuthDep):
     media_type: Optional[str] = None
     with Session(engine) as s:
         a = s.get(Asset, asset_id)
@@ -367,7 +389,7 @@ def get_file(asset_id: str, name: str, _: Optional[str] = Depends(require_auth))
 
 
 @app.get("/thumb/{asset_id}.jpg")
-def get_thumb(asset_id: str, _: Optional[str] = Depends(require_auth)):
+def get_thumb(asset_id: str, _: AuthDep):
     p = THUMBS / f"{asset_id}.jpg"
     if not p.exists():
         raise HTTPException(404)
@@ -394,7 +416,8 @@ def list_assets(
     folder_id: Optional[str] = None,
     limit: Optional[int] = Query(default=None, ge=1, le=1000),
     offset: Optional[int] = Query(default=None, ge=0),
-    _: Optional[str] = Depends(require_auth),
+    *,
+    _: AuthDep,
 ):
     with Session(engine) as s:
         stmt = apply_asset_filters(select(Asset), q, tags, folder_id)
@@ -422,7 +445,8 @@ def list_tags(
     q: Optional[str] = None,
     tags: Optional[str] = Query(default=None, description="Comma-separated tags"),
     folder_id: Optional[str] = None,
-    _: Optional[str] = Depends(require_auth),
+    *,
+    _: AuthDep,
 ):
     with Session(engine) as s:
         stmt = apply_asset_filters(select(Asset.tags_json), q, tags, folder_id)
@@ -446,7 +470,7 @@ def list_tags(
 
 
 @app.post("/download/zip")
-def download_zip(body: DownloadRequest, background: BackgroundTasks, _: Optional[str] = Depends(require_auth)):
+def download_zip(body: DownloadRequest, background: BackgroundTasks, _: AuthDep):
     if not (body.asset_ids or body.tag or body.folder_id):
         raise HTTPException(status_code=400, detail="Provide asset_ids, tag, or folder_id to download.")
 
@@ -479,7 +503,7 @@ def download_zip(body: DownloadRequest, background: BackgroundTasks, _: Optional
 
 
 @app.post("/asset/{asset_id}/tags", response_model=AssetOut)
-def set_tags(asset_id: str, body: TagUpdate, _: Optional[str] = Depends(require_auth)):
+def set_tags(asset_id: str, body: TagUpdate, _: AuthDep):
     with Session(engine) as s:
         a = s.get(Asset, asset_id)
         if not a:
@@ -492,7 +516,7 @@ def set_tags(asset_id: str, body: TagUpdate, _: Optional[str] = Depends(require_
 
 
 @app.post("/asset/{asset_id}/meta", response_model=AssetOut)
-def update_asset_meta(asset_id: str, body: AssetMetaUpdate, _: Optional[str] = Depends(require_auth)):
+def update_asset_meta(asset_id: str, body: AssetMetaUpdate, _: AuthDep):
     with Session(engine) as s:
         a = s.get(Asset, asset_id)
         if not a:
@@ -508,7 +532,7 @@ def update_asset_meta(asset_id: str, body: AssetMetaUpdate, _: Optional[str] = D
 
 
 @app.post("/asset/{asset_id}/rename", response_model=AssetOut)
-def rename_asset(asset_id: str, body: AssetRename, _: Optional[str] = Depends(require_auth)):
+def rename_asset(asset_id: str, body: AssetRename, _: AuthDep):
     new_name = (body.filename or "").strip()
     if not new_name:
         raise HTTPException(400, "Filename cannot be empty")
@@ -544,23 +568,14 @@ def rename_asset(asset_id: str, body: AssetRename, _: Optional[str] = Depends(re
 
 
 @app.delete("/asset/{asset_id}")
-def delete_asset(asset_id: str, _: Optional[str] = Depends(require_auth)):
+def delete_asset(asset_id: str, _: AuthDep):
     with Session(engine) as s:
         a = s.get(Asset, asset_id)
         if not a:
             raise HTTPException(404)
         s.delete(a)
         s.commit()
-    # best-effort cleanup
-    try:
-        ap = STORAGE / asset_id
-        if ap.exists():
-            for child in ap.iterdir():
-                child.unlink(missing_ok=True)
-            ap.rmdir()
-        (THUMBS / f"{asset_id}.jpg").unlink(missing_ok=True)
-    except Exception:
-        pass
+    cleanup_asset(asset_id)
     return {"ok": True}
 
 
@@ -568,14 +583,14 @@ def delete_asset(asset_id: str, _: Optional[str] = Depends(require_auth)):
 
 
 @app.get("/folders", response_model=List[FolderOut])
-def list_folders(_: Optional[str] = Depends(require_auth)):
+def list_folders(_: AuthDep):
     with Session(engine) as s:
         rows = list(s.exec(select(Folder)))
     return [folder_to_out(f) for f in rows]
 
 
 @app.post("/folders", response_model=FolderOut)
-def create_folder(body: FolderIn, _: Optional[str] = Depends(require_auth)):
+def create_folder(body: FolderIn, _: AuthDep):
     with Session(engine) as s:
         parent_id = validate_parent_folder(s, body.parent_id)
         f = Folder(name=body.name, tags_json=json.dumps(body.tags), parent_id=parent_id)
@@ -586,7 +601,7 @@ def create_folder(body: FolderIn, _: Optional[str] = Depends(require_auth)):
 
 
 @app.patch("/folder/{folder_id}", response_model=FolderOut)
-def update_folder(folder_id: str, body: FolderIn, _: Optional[str] = Depends(require_auth)):
+def update_folder(folder_id: str, body: FolderIn, _: AuthDep):
     with Session(engine) as s:
         f = s.get(Folder, folder_id)
         if not f:
@@ -602,7 +617,7 @@ def update_folder(folder_id: str, body: FolderIn, _: Optional[str] = Depends(req
 
 
 @app.delete("/folder/{folder_id}")
-def delete_folder(folder_id: str, _: Optional[str] = Depends(require_auth)):
+def delete_folder(folder_id: str, _: AuthDep):
     with Session(engine) as s:
         f = s.get(Folder, folder_id)
         if not f:
@@ -621,7 +636,7 @@ def delete_folder(folder_id: str, _: Optional[str] = Depends(require_auth)):
 
 
 @app.get("/folder/{folder_id}/download")
-def download_folder(folder_id: str, background: BackgroundTasks, _: Optional[str] = Depends(require_auth)):
+def download_folder(folder_id: str, background: BackgroundTasks, _: AuthDep):
     with Session(engine) as s:
         folder = s.get(Folder, folder_id)
         if not folder:
@@ -632,7 +647,7 @@ def download_folder(folder_id: str, background: BackgroundTasks, _: Optional[str
     return zip_assets_response(assets, download_name, background, folder_map)
 
 @app.post("/asset/{asset_id}/folder", response_model=AssetOut)
-def update_asset_folder(asset_id: str, body: AssetFolderUpdate, _: Optional[str] = Depends(require_auth)):
+def update_asset_folder(asset_id: str, body: AssetFolderUpdate, _: AuthDep):
     with Session(engine) as s:
         asset = s.get(Asset, asset_id)
         if not asset:

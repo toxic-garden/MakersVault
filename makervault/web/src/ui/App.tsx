@@ -201,8 +201,6 @@ export default function App() {
             folderId={folderId}
             foldersVersion={folderVersion}
             onUnauthorized={handleUnauthorized}
-            slicerSettings={settings.slicer}
-            engravingSettings={settings.engraving}
             theme={resolvedTheme}
           />
         ) : (

@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "lucide-react": "^0.441.0",
@@ -16,12 +18,18 @@
     "occt-import-js": "0.0.23"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.4.5",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/user-event": "^14.5.2",
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",
     "@types/three": "^0.160.0",
+    "@vitest/coverage-v8": "^2.1.1",
     "autoprefixer": "^10.4.16",
+    "jsdom": "^24.1.0",
     "postcss": "^8.4.31",
     "tailwindcss": "^3.4.3",
-    "vite": "^5.4.1"
+    "vite": "^5.4.1",
+    "vitest": "^2.1.1"
   }
 }

@@ -1,30 +1,3 @@
-export type SlicerOption = { id: string; label: string };
-
-export const SLICER_OPTIONS: SlicerOption[] = [
-  { id: "orca", label: "OrcaSlicer" },
-  { id: "bambu", label: "Bambu Studio" },
-  { id: "prusa", label: "PrusaSlicer" },
-  { id: "superslicer", label: "SuperSlicer" },
-  { id: "cura", label: "UltiMaker Cura" },
-  { id: "ideamaker", label: "ideaMaker" },
-  { id: "simplify3d", label: "Simplify3D" },
-  { id: "kisslicer", label: "KISSlicer" },
-  { id: "repetier", label: "Repetier-Host" },
-  { id: "chitubox", label: "ChiTuBox" },
-  { id: "lychee", label: "Lychee Slicer" },
-  { id: "photon", label: "Anycubic Photon Workshop" },
-  { id: "creality", label: "Creality Print" },
-  { id: "other", label: "Other / Manual" },
-];
-
-export type EngraverOption = { id: string; label: string };
-
-export const ENGRAVER_OPTIONS: EngraverOption[] = [
-  { id: "lightburn", label: "LightBurn" },
-  { id: "ezcad", label: "EZCAD" },
-  { id: "other", label: "Other / Manual" },
-];
-
 export type ThemeId = "system" | "light" | "dark" | "neon" | "purple" | "blue";
 export type ResolvedTheme = "light" | "dark" | "neon" | "purple" | "blue";
 export type ThemeOption = { id: ThemeId; label: string; description: string };
@@ -37,16 +10,6 @@ export const THEME_OPTIONS: ThemeOption[] = [
   { id: "purple", label: "Neon Purple", description: "Black UI with purple glow highlights." },
   { id: "blue", label: "Neon Blue", description: "Black UI with blue glow highlights." },
 ];
-
-export type SlicerSettings = {
-  enabled: boolean;
-  selected: string;
-};
-
-export type EngravingSettings = {
-  enabled: boolean;
-  selected: string;
-};
 
 export type ThemeSettings = {
   selected: ThemeId;
@@ -65,8 +28,6 @@ export type NetworkSettings = {
 };
 
 export type AppSettings = {
-  slicer: SlicerSettings;
-  engraving: EngravingSettings;
   theme: ThemeSettings;
   makerworld: MakerWorldSettings;
   thingiverse: ThingiverseSettings;
@@ -77,14 +38,6 @@ const STORAGE_KEY = "makersvault_settings";
 const LEGACY_THEME_KEY = "makersvault_theme";
 
 const DEFAULT_SETTINGS: AppSettings = {
-  slicer: {
-    enabled: false,
-    selected: "orca",
-  },
-  engraving: {
-    enabled: false,
-    selected: "lightburn",
-  },
   theme: {
     selected: "system",
   },
@@ -104,18 +57,6 @@ export function loadSettings(): AppSettings {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) || {} : {};
-    const slicer = parsed.slicer || {};
-    const selected = typeof slicer.selected === "string" ? slicer.selected : DEFAULT_SETTINGS.slicer.selected;
-    const enabled = typeof slicer.enabled === "boolean" ? slicer.enabled : DEFAULT_SETTINGS.slicer.enabled;
-    const valid = SLICER_OPTIONS.some(opt => opt.id === selected);
-    const engraving = parsed.engraving || {};
-    const engravingSelected = typeof engraving.selected === "string"
-      ? engraving.selected
-      : DEFAULT_SETTINGS.engraving.selected;
-    const engravingEnabled = typeof engraving.enabled === "boolean"
-      ? engraving.enabled
-      : DEFAULT_SETTINGS.engraving.enabled;
-    const engravingValid = ENGRAVER_OPTIONS.some(opt => opt.id === engravingSelected);
     const theme = parsed.theme || {};
     let themeSelected = typeof theme.selected === "string" ? theme.selected : DEFAULT_SETTINGS.theme.selected;
     const themeValid = THEME_OPTIONS.some(opt => opt.id === themeSelected);
@@ -136,14 +77,6 @@ export function loadSettings(): AppSettings {
       }
     }
     return {
-      slicer: {
-        enabled,
-        selected: valid ? selected : DEFAULT_SETTINGS.slicer.selected,
-      },
-      engraving: {
-        enabled: engravingEnabled,
-        selected: engravingValid ? engravingSelected : DEFAULT_SETTINGS.engraving.selected,
-      },
       theme: {
         selected: themeSelected as ThemeId,
       },
@@ -169,18 +102,6 @@ export function saveSettings(settings: AppSettings) {
   } catch {
     // ignore storage errors
   }
-}
-
-export function slicerLabelFor(id?: string | null) {
-  if (!id) return "Slicer";
-  const match = SLICER_OPTIONS.find(opt => opt.id === id);
-  return match ? match.label : "Slicer";
-}
-
-export function engraverLabelFor(id?: string | null) {
-  if (!id) return "Engraving";
-  const match = ENGRAVER_OPTIONS.find(opt => opt.id === id);
-  return match ? match.label : "Engraving";
 }
 
 export function resolveTheme(selected: ThemeId): ResolvedTheme {
