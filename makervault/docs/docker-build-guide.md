@@ -83,33 +83,6 @@ makervault/
 
 ---
 
-## Quick start: dev stack
-
-If you just want to run MakerVault locally without building custom images:
-
-```bash
-git clone https://github.com/<your-org>/makervault.git
-cd makervault
-docker compose up
-```
-
-This pulls prebuilt images from Docker Hub (`shotgunwilly555/makersvault-api:v1`,
-`shotgunwilly555/makersvault-web:v1`) and starts the dev stack on:
-
-- API:  http://localhost:8000
-- Web:  http://localhost:5173
-
-Source code is bind-mounted into the containers, so any local edit triggers
-an automatic reload on the API (uvicorn `--reload`) or the web (Vite HMR).
-
-To stop:
-
-```bash
-docker compose down
-```
-
----
-
 ## Building the dev images
 
 The `docker-compose.yml` file at the repo root is the **dev** compose. It
