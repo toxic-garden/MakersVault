@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Download, Trash2, X } from "lucide-react";
+import { Download, FolderInput, Trash2, X } from "lucide-react";
 import {
   Asset,
   Folder,
@@ -565,6 +565,37 @@ export default function AssetGrid({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteKeepFiles, setDeleteKeepFiles] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [showMoveMenu, setShowMoveMenu] = useState(false);
+  const [bulkMoving, setBulkMoving] = useState(false);
+
+  const moveSelected = async (folderId: string | null) => {
+    if (!selectedIds.size) return;
+    setShowMoveMenu(false);
+    setBulkMoving(true);
+    const failed: string[] = [];
+    let aborted = false;
+    for (const targetId of selectedIds) {
+      try {
+        await updateAssetFolder(targetId, folderId);
+      } catch (err) {
+        if (err instanceof UnauthorizedError) {
+          onUnauthorized?.();
+          aborted = true;
+          break;
+        }
+        console.error(err);
+        failed.push(itemById[targetId]?.filename || targetId);
+      }
+    }
+    if (!aborted) {
+      await refresh();
+      setSelectedIds(new Set());
+    }
+    if (failed.length) {
+      alert(`Move failed for: ${failed.join(", ")}`);
+    }
+    setBulkMoving(false);
+  };
 
   const deleteSelected = async () => {
     if (!selectedIds.size) return;
@@ -678,6 +709,32 @@ export default function AssetGrid({
             <Download className="w-4 h-4" />
             {bulkDownloading === "selected" ? "Preparing…" : "Download selected"}
           </button>
+          <div className="relative">
+            <button
+              className="flex items-center gap-1.5 h-8 px-3 rounded-md border border-panel-strong text-sm font-medium transition-smooth hover:bg-panel disabled:opacity-60"
+              onClick={() => setShowMoveMenu(v => !v)}
+              disabled={bulkMoving}
+            >
+              <FolderInput className="w-4 h-4" />
+              {bulkMoving ? "Moving…" : "Move to folder"}
+            </button>
+            {showMoveMenu && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setShowMoveMenu(false)} />
+                <div className="absolute right-0 mt-1 min-w-[200px] max-h-[300px] overflow-y-auto rounded-md border border-panel bg-panel-strong shadow-md z-40">
+                  {folderOptions.map(opt => (
+                    <button
+                      key={opt.id ?? "none"}
+                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-panel transition-smooth"
+                      onClick={() => moveSelected(opt.id)}
+                    >
+                      {opt.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <button
             className="flex items-center gap-1.5 h-8 px-3 rounded-md border border-red-300 text-red-600 dark:text-red-300 text-sm font-medium transition-smooth hover:bg-red-50 dark:hover:bg-red-900/30 disabled:opacity-60"
             onClick={() => setShowDeleteDialog(true)}
