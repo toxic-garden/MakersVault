@@ -192,7 +192,7 @@ export default function UploadBar({ onUploaded, folderId, makerworldCookie, thin
         className="hidden"
       />
       <button
-        className="h-8 px-3 rounded-md bg-accent hover:bg-accent-strong disabled:opacity-60 text-sm transition-smooth"
+        className="h-8 px-3 rounded-md border border-panel-strong disabled:opacity-60 text-sm transition-smooth hover:bg-panel"
         disabled={isBusy}
         onClick={() => inputRef.current?.click()}
       >

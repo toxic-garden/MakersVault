@@ -438,7 +438,7 @@ export default function Sidebar({
   >
     <div className="flex items-center justify-between">
       <div className="text-xs text-muted font-medium">Folders</div>
-      <button className="text-xs px-2 py-1 rounded-md border border-panel-strong transition-smooth hover:bg-panel-soft" onClick={() => startCreate(null)}>New</button>
+      <button className="h-7 px-2 text-xs rounded-md border border-panel-strong transition-smooth hover:bg-panel-soft" onClick={() => startCreate(null)}>New</button>
     </div>
 
     <button
@@ -513,7 +513,7 @@ export default function Sidebar({
         <button
           type="button"
           onClick={onOpenSettings}
-          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md border text-sm transition-smooth ${
+          className={`w-full flex items-center gap-2 h-8 px-3 rounded-md border text-sm transition-smooth ${
             activeView === "settings"
               ? "bg-accent-soft border-accent-soft"
               : "border-panel-strong hover:bg-panel-soft"

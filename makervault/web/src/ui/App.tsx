@@ -149,7 +149,7 @@ export default function App() {
           <span>API unreachable at {getApiBase()}. Ensure the API container is running and reachable.</span>
           {!!settings.network.publicUrl && (
             <button
-              className="px-2 py-1 rounded-md border border-red-400/70 text-xs font-medium"
+              className="h-7 px-2 rounded-md border border-red-400/70 text-xs font-medium"
               onClick={resetSavedProxyUrl}
               type="button"
             >
@@ -177,7 +177,7 @@ export default function App() {
             />
           ) : (
             <button
-              className="px-2.5 py-1.5 rounded-md border border-panel-strong text-sm transition-smooth hover:bg-panel"
+              className="h-8 px-3 rounded-md border border-panel-strong text-sm transition-smooth hover:bg-panel"
               onClick={() => setActiveView("library")}
             >
               Back to library
@@ -189,7 +189,7 @@ export default function App() {
                 handleLogout();
               }
             }}
-            className="px-2.5 py-1.5 rounded-md border border-panel-strong text-sm transition-smooth hover:bg-panel"
+            className="h-8 px-3 rounded-md border border-panel-strong text-sm transition-smooth hover:bg-panel"
           >
             Log out
           </button>
