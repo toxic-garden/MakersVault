@@ -411,8 +411,8 @@ def apply_asset_filters(stmt, q: Optional[str], tags: Optional[str], folder_id: 
     tag_filter = [t.strip() for t in (tags or "").split(",") if t.strip()]
     for tag in tag_filter:
         stmt = stmt.where(Asset.tags_json.like(f'%"{tag}"%'))
-    # Filter to allowed filetypes only
-    ext_conditions = [Asset.filename.like(f"%.{ext}") for ext in ALLOWED_EXTENSIONS]
+    # Filter to allowed filetypes only, but always keep .zip files so uploaded archives remain visible
+    ext_conditions = [Asset.filename.like(f"%.{ext}") for ext in ALLOWED_EXTENSIONS] + [Asset.filename.like("%.zip")]
     stmt = stmt.where(or_(*ext_conditions))
     return stmt
 

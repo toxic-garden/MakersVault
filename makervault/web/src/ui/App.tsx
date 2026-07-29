@@ -7,6 +7,8 @@ import Settings from "./Settings";
 import { apiHealth, getApiBase, refreshToken, type HealthInfo } from "../lib/api";
 import { clearToken, readToken, storeToken } from "../lib/auth";
 import { type AppSettings, type ResolvedTheme, loadSettings, resolveTheme, saveSettings } from "../lib/settings";
+import { UploadProgressInfo } from "../lib/uploadTree";
+import UploadProgressPanel from "./UploadProgressPanel";
 const DEFAULT_REFRESH_SECONDS = 6 * 60 * 60; // 6 hours
 
 const logoForTheme = (theme: ResolvedTheme) => {
@@ -34,6 +36,8 @@ export default function App() {
   const [sessionExpired, setSessionExpired] = React.useState(false);
   const [activeView, setActiveView] = React.useState<"library" | "settings">("library");
   const [settings, setSettings] = React.useState<AppSettings>(() => loadSettings());
+  const [uploadProgress, setUploadProgress] = React.useState<UploadProgressInfo[]>([]);
+  const [uploadPanelOpen, setUploadPanelOpen] = React.useState(false);
   const resolvedTheme = React.useMemo(
     () => resolveTheme(settings.theme.selected),
     [settings.theme.selected]
@@ -174,6 +178,8 @@ export default function App() {
               thingiverseCookie={settings.thingiverse.cookie}
               onUploaded={handleAssetsChanged}
               onUnauthorized={handleUnauthorized}
+              onProgress={setUploadProgress}
+              onProgressOpen={setUploadPanelOpen}
             />
           ) : (
             <button
@@ -213,7 +219,15 @@ export default function App() {
             onSelectFolder={handleSelectFolder}
           />
         )}
-      </main>
-    </div>
-  );
-}
+        </main>
+        <UploadProgressPanel
+          items={uploadProgress}
+          open={uploadPanelOpen}
+          onClose={() => {
+            setUploadPanelOpen(false);
+            setUploadProgress([]);
+          }}
+        />
+      </div>
+    );
+  }

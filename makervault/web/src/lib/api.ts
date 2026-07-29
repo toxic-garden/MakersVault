@@ -192,7 +192,7 @@ export async function listTags(params: {
 
 export async function uploadAsset(
   file: File,
-  opts: { title?: string; notes?: string; tags?: string[]; folder_id?: string }
+  opts: { title?: string; notes?: string; tags?: string[]; folder_id?: string; onProgress?: (loaded: number, total: number) => void }
  = {}
 ) {
   const fd = new FormData();
@@ -201,19 +201,52 @@ export async function uploadAsset(
   if (opts.notes) fd.set("notes", opts.notes);
   if (opts.tags && opts.tags.length) fd.set("tags", opts.tags.join(","));
   if (opts.folder_id) fd.set("folder_id", opts.folder_id);
-  const res = await fetch(`${apiBase()}/upload`, {
-    method: "POST",
-    body: fd,
-    headers: authHeaders(),
+
+  return new Promise<Asset>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", appendTokenToUrl(`${apiBase()}/upload`));
+    for (const [key, value] of Object.entries(authHeaders())) {
+      xhr.setRequestHeader(key, value);
+    }
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable) {
+        opts.onProgress?.(e.loaded, e.total);
+      }
+    });
+    xhr.addEventListener("load", () => {
+      if (xhr.status === 401) {
+        reject(new UnauthorizedError());
+        return;
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const message = readErrorMessageFromText(xhr.responseText, "Upload failed");
+        reject(new Error(message));
+        return;
+      }
+      try {
+        resolve(JSON.parse(xhr.responseText));
+      } catch {
+        resolve(xhr.response as unknown as Asset);
+      }
+    });
+    xhr.addEventListener("error", () => reject(new Error("Upload failed")));
+    xhr.addEventListener("abort", () => reject(new Error("Upload aborted")));
+    xhr.send(fd);
   });
-  if (res.status === 401) {
-    throw new UnauthorizedError();
+}
+
+function readErrorMessageFromText(text: string, fallback: string) {
+  const trimmed = (text || "").trim();
+  if (!trimmed) return fallback;
+  try {
+    const data = JSON.parse(trimmed);
+    if (typeof data?.detail === "string" && data.detail.trim()) {
+      return data.detail.trim();
+    }
+  } catch {
+    // ignore JSON parse errors
   }
-  if (!res.ok) {
-    const message = await readErrorMessage(res, "Upload failed");
-    throw new Error(message);
-  }
-  return res.json();
+  return trimmed;
 }
 
 export async function importFromLink(payload: {

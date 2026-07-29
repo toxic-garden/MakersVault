@@ -83,16 +83,38 @@ export async function entriesFromDataTransfer(dataTransfer: DataTransfer): Promi
   return output;
 }
 
+export type UploadProgressInfo = {
+  fileName: string;
+  fileSize: number;
+  loaded: number;
+  status: "pending" | "uploading" | "done" | "failed";
+};
+
+export type UploadProgressCallback = (items: UploadProgressInfo[]) => void;
+
 export async function uploadEntriesToFolder(
   entries: UploadEntry[],
   parentFolderId: string | null,
-  onUnauthorized?: () => void
+  onUnauthorized?: () => void,
+  onProgress?: UploadProgressCallback
 ) {
   const failed: string[] = [];
   let uploaded = 0;
   let aborted = false;
   const uploadedEntries: UploadEntry[] = [];
   const folderCache = new Map<string, string>();
+  const progressItems: UploadProgressInfo[] = entries.map(entry => ({
+    fileName: entry.file.name,
+    fileSize: entry.file.size,
+    loaded: 0,
+    status: "pending",
+  }));
+  const reportProgress = (index: number, patch: Partial<UploadProgressInfo>) => {
+    if (index < 0 || index >= progressItems.length) return;
+    progressItems[index] = { ...progressItems[index], ...patch };
+    onProgress?.(progressItems.slice());
+  };
+  onProgress?.(progressItems.slice());
   const baseKey = parentFolderId || "root";
 
   const getOrCreateFolder = async (parentId: string | null, parentKey: string, name: string) => {
@@ -105,7 +127,8 @@ export async function uploadEntriesToFolder(
     return folderId;
   };
 
-  for (const entry of entries) {
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
     const normalized = normalizeRelativePath(entry.relativePath || entry.file.name);
     const segments = normalized.split("/").filter(Boolean);
     if (!segments.length) continue;
@@ -129,17 +152,26 @@ export async function uploadEntriesToFolder(
       }
     }
     if (aborted) break;
-    if (targetFolderId === null && segments.length) continue;
+    if (targetFolderId === null && segments.length) {
+      reportProgress(i, { status: "failed" });
+      continue;
+    }
+    reportProgress(i, { status: "uploading" });
     try {
-      await uploadAsset(entry.file, { folder_id: targetFolderId || undefined });
+      await uploadAsset(entry.file, {
+        folder_id: targetFolderId || undefined,
+        onProgress: (loaded) => reportProgress(i, { loaded }),
+      });
       uploaded += 1;
       uploadedEntries.push(entry);
+      reportProgress(i, { status: "done", loaded: entry.file.size });
     } catch (err) {
       if (err instanceof UnauthorizedError) {
         onUnauthorized?.();
         aborted = true;
         break;
       }
+      reportProgress(i, { status: "failed" });
       console.error("Upload failed for", entry.file.name, err);
       const message = err instanceof Error ? err.message.trim() : "";
       failed.push(message && message !== "Upload failed" ? `${entry.file.name} (${message})` : entry.file.name);

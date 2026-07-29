@@ -10,15 +10,19 @@ import { entriesFromFileList, uploadEntriesToFolder } from "../lib/uploadTree";
 import { buildUploadEntriesFromZip, isZipFile, readZipEntries } from "../lib/zipUtils";
 import { useZipImportPrompt } from "./ZipImportModal";
 
+import { UploadProgressInfo } from "../lib/uploadTree";
+
 type Props = {
   onUploaded: () => void;
   folderId?: string | null;
   makerworldCookie?: string | null;
   thingiverseCookie?: string | null;
   onUnauthorized?: () => void;
+  onProgress?: (items: UploadProgressInfo[]) => void;
+  onProgressOpen?: (open: boolean) => void;
 };
 
-export default function UploadBar({ onUploaded, folderId, makerworldCookie, thingiverseCookie, onUnauthorized }: Props) {
+export default function UploadBar({ onUploaded, folderId, makerworldCookie, thingiverseCookie, onUnauthorized, onProgress, onProgressOpen }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -36,28 +40,27 @@ export default function UploadBar({ onUploaded, folderId, makerworldCookie, thin
   const uploadEntries = async (entries: ReturnType<typeof entriesFromFileList>) => {
     if (!entries.length) return;
     setUploading(true);
+    onProgressOpen?.(true);
     const normalEntries = entries.filter(entry => !isZipFile(entry.file.name));
     const zipEntries = entries.filter(entry => isZipFile(entry.file.name));
-    let uploaded = 0;
+
+    // Collect all entries to upload in a single batch so that folder creation
+    // is de-duplicated across STLs and zip-as-asset / extracted entries.
+    const allEntries: ReturnType<typeof entriesFromFileList> = [...normalEntries];
     const failed: string[] = [];
-    const applyResult = (result: { uploaded: number; failed: string[] }) => {
-      uploaded += result.uploaded;
-      failed.push(...result.failed);
-    };
-    if (normalEntries.length) {
-      const result = await uploadEntriesToFolder(normalEntries, folderId || null, onUnauthorized);
-      applyResult(result);
-    }
+
     for (const entry of zipEntries) {
       let zipData: Record<string, Uint8Array> | null = null;
-      const baseParts = entry.relativePath.split("/").filter(Boolean);
-      baseParts.pop();
-      const basePath = baseParts.join("/");
+      const relativeDirParts = entry.relativePath.split("/").filter(Boolean);
+      relativeDirParts.pop();
+      const basePath = relativeDirParts.join("/");
+      let zipHandled = false;
       await zipPrompt.prompt({
         label: entry.file.name,
         onImportAsZip: async () => {
-          const result = await uploadEntriesToFolder([entry], folderId || null, onUnauthorized);
-          applyResult(result);
+          // Upload the zip itself as a regular asset in the same folder structure
+          allEntries.push({ ...entry, relativePath: basePath ? `${basePath}/${entry.file.name}` : entry.file.name });
+          zipHandled = true;
         },
         loadEntries: async () => {
           const result = await readZipEntries(entry.file);
@@ -70,10 +73,21 @@ export default function UploadBar({ onUploaded, folderId, makerworldCookie, thin
             zipData = result.data;
           }
           const unzipEntries = buildUploadEntriesFromZip(zipData || {}, selectedPaths, basePath);
-          const result = await uploadEntriesToFolder(unzipEntries, folderId || null, onUnauthorized);
-          applyResult(result);
+          allEntries.push(...unzipEntries);
+          zipHandled = true;
         },
       });
+      // If the user closed the prompt without choosing, skip the zip
+      if (!zipHandled) {
+        failed.push(entry.file.name);
+      }
+    }
+
+    let uploaded = 0;
+    if (allEntries.length) {
+      const result = await uploadEntriesToFolder(allEntries, folderId || null, onUnauthorized, onProgress);
+      uploaded = result.uploaded;
+      failed.push(...result.failed);
     }
     if (uploaded) onUploaded();
     if (failed.length) {

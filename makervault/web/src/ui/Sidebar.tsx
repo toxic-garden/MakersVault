@@ -363,68 +363,73 @@ export default function Sidebar({
     const isOpen = expanded.has(folder.id);
     const isDropTarget = dropTargetId === folder.id;
     return (
-      <div
-        key={folder.id}
-        className={`flex items-center gap-1.5 w-full rounded-md px-1.5 py-1.5 min-h-[32px] transition-smooth ${
-          isSelected ? "bg-accent-soft" : "hover:bg-panel-soft"
-        } ${isDropTarget ? "ring-2 ring-[color:var(--mv-accent)] ring-offset-1 ring-offset-[color:var(--mv-panel-strong)]" : ""}`}
-        style={{ paddingLeft: 6 + depth * 10 }}
-        onDragOver={handleDragOverTarget(folder.id)}
-        onDrop={handleDropFiles(folder.id)}
-      >
-        {children.length ? (
-          <button
-            onClick={() => toggleExpand(folder.id)}
-            className="text-xs w-4 h-4 flex items-center justify-center rounded border border-transparent hover:border-panel-strong shrink-0"
-            aria-label={isOpen ? "Collapse" : "Expand"}
-          >
-            {isOpen ? "▾" : "▸"}
+      <div key={folder.id} className="flex flex-col w-full">
+        <div
+          className={`flex items-center gap-1.5 w-full rounded-md px-1.5 py-1.5 min-h-[32px] transition-smooth ${
+            isSelected ? "bg-accent-soft" : "hover:bg-panel-soft"
+          } ${isDropTarget ? "ring-2 ring-[color:var(--mv-accent)] ring-offset-1 ring-offset-[color:var(--mv-panel-strong)]" : ""}`}
+          style={{ paddingLeft: 6 + depth * 10 }}
+          onDragOver={handleDragOverTarget(folder.id)}
+          onDrop={handleDropFiles(folder.id)}
+        >
+          {children.length ? (
+            <button
+              onClick={() => toggleExpand(folder.id)}
+              className="text-xs w-4 h-4 flex items-center justify-center rounded border border-transparent hover:border-panel-strong shrink-0"
+              aria-label={isOpen ? "Collapse" : "Expand"}
+            >
+              {isOpen ? "▾" : "▸"}
+            </button>
+          ) : (
+            <span className="w-4 h-4 shrink-0" />
+          )}
+          <button className="flex-1 text-left truncate text-sm" onClick={() => onSelect(folder.id)} title={folderPath(folder)}>
+            {depth > 0 ? "– " : ""}
+            {folder.name || "Untitled"}
           </button>
-        ) : (
-          <span className="w-4 h-4 shrink-0" />
-        )}
-        <button className="flex-1 text-left truncate text-sm" onClick={() => onSelect(folder.id)} title={folderPath(folder)}>
-          {depth > 0 ? "– " : ""}
-          {folder.name || "Untitled"}
-        </button>
-        <div className="relative shrink-0">
-          <details className="group">
-            <summary className="list-none w-6 h-6 rounded-md border border-panel-strong flex items-center justify-center text-xs cursor-pointer select-none hover:bg-panel-soft">
-              ⋯
-            </summary>
-            <div className="absolute right-0 mt-1 min-w-[130px] rounded-md border border-panel bg-panel-strong shadow-md z-10 overflow-hidden">
-              <button
-                className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-panel-soft disabled:opacity-60"
-                disabled={busy}
-                onClick={(e) => { closeFolderMenu(e); startCreate(folder.id); }}
-              >
-                + Subfolder
-              </button>
-              <button
-                className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-panel-soft disabled:opacity-60"
-                disabled={busy}
-                onClick={(e) => { closeFolderMenu(e); startEdit(folder); }}
-              >
-                Edit
-              </button>
-              <button
-                className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-panel-soft disabled:opacity-60"
-                disabled={busy}
-                onClick={(e) => { closeFolderMenu(e); downloadFolder(folder); }}
-              >
-                Zip download
-              </button>
-              <button
-                className="w-full text-left px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/40 disabled:opacity-60"
-                disabled={busy}
-                onClick={(e) => { closeFolderMenu(e); remove(folder.id); }}
-              >
-                Delete
-              </button>
-            </div>
-          </details>
+          <div className="relative shrink-0">
+            <details className="group">
+              <summary className="list-none w-6 h-6 rounded-md border border-panel-strong flex items-center justify-center text-xs cursor-pointer select-none hover:bg-panel-soft">
+                ⋯
+              </summary>
+              <div className="absolute right-0 mt-1 min-w-[130px] rounded-md border border-panel bg-panel-strong shadow-md z-10 overflow-hidden">
+                <button
+                  className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-panel-soft disabled:opacity-60"
+                  disabled={busy}
+                  onClick={(e) => { closeFolderMenu(e); startCreate(folder.id); }}
+                >
+                  + Subfolder
+                </button>
+                <button
+                  className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-panel-soft disabled:opacity-60"
+                  disabled={busy}
+                  onClick={(e) => { closeFolderMenu(e); startEdit(folder); }}
+                >
+                  Edit
+                </button>
+                <button
+                  className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-panel-soft disabled:opacity-60"
+                  disabled={busy}
+                  onClick={(e) => { closeFolderMenu(e); downloadFolder(folder); }}
+                >
+                  Zip download
+                </button>
+                <button
+                  className="w-full text-left px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/40 disabled:opacity-60"
+                  disabled={busy}
+                  onClick={(e) => { closeFolderMenu(e); remove(folder.id); }}
+                >
+                  Delete
+                </button>
+              </div>
+            </details>
+          </div>
         </div>
-        {isOpen && children.map(child => renderFolderNode(child, depth + 1))}
+        {isOpen && (
+          <div className="flex flex-col w-full">
+            {children.map(child => renderFolderNode(child, depth + 1))}
+          </div>
+        )}
       </div>
     );
   };
