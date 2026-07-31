@@ -1,0 +1,9 @@
+version: "3.9"
+
+# Override for docker-compose.deploy.yml that publishes the API port on the host.
+# Use this when running Makers Vault directly / on a LAN without a reverse proxy.
+
+services:
+  api:
+    ports:
+      - "${API_PORT:-8000}:8000"

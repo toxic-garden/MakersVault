@@ -1,11 +1,13 @@
 version: "3.9"
 
 # Deploy compose for the GHCR-published images.
+# Intended for use behind a reverse proxy (the API is not published to the host).
+# For direct/LAN access, also use docker-compose.deploy.local.yml.
 # Override these image references with env vars if you want a different tag or registry.
 
 services:
   api:
-    image:  ghcr.io/toxic-garden/makersvaultrevived-api:latest
+    image: ghcr.io/toxic-garden/makersvaultrevived-api:latest
     restart: unless-stopped
     environment:
       - PUID=${PUID:-1000}
@@ -25,10 +27,10 @@ services:
       - "8000"
 
   web:
-    image: docker pull ghcr.io/toxic-garden/makersvaultrevived-web:latest
+    image: ghcr.io/toxic-garden/makersvaultrevived-web:latest
     restart: unless-stopped
     environment:
-      - PUBLIC_URL=${PUBLIC_URL:-}
+      - PUBLIC_URL=${PUBLIC_URL:-http://localhost:8080}
       - VITE_API_URL=${VITE_API_URL:-}
       - VITE_ALLOWED_HOSTS=${VITE_ALLOWED_HOSTS:-}
       - CORS_ORIGINS=${CORS_ORIGINS:-}

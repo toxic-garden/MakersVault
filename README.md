@@ -1,380 +1,133 @@
+> **Note:** This repository is a fork of the original [MakersVault](https://github.com/GhostLabs-ent/MakersVault) project. It retains the original goal — a self-hosted home for 3D print files and creative assets — and adds a number of enhancements around deployment, reliability, and day-to-day use.
 
-<img width="612" height="408" alt="makersvaultlogoneon-removebg-preview" src="https://github.com/user-attachments/assets/32e7faae-23e3-41bb-a188-376ad2fa68df" />
+# Makers Vault (Revived Fork)
 
-![Status](https://img.shields.io/badge/status-Beta%20release-brightgreen)
-![Version](https://img.shields.io/badge/version-5.1.2-blue)
-![Docker Pulls](https://img.shields.io/docker/pulls/shotgunwilly555/makersvault-web)
-![License](https://img.shields.io/github/license/VincentCinque/MakersVault)
+Makers Vault is a self-hosted web application for organizing, tagging, and previewing 3D print and laser engraver files directly in your browser. Create folders, drag-and-drop uploads, preview STL/STEP/OBJ/3MF/SVG models and images, and manage everything through a clean web UI.
 
+This fork focuses on:
 
-<h1>Makers Vault</h1>
-<p>Makers Vault is a home for all your 3D print files and creative images/illustrations. Tired of having basic folders on your desktop filled with 3D print files with inconsistent names? Tired of having to load a 3D print file into your slicer just to see what it is? Look no further. Create folders, tag your files, and preview them in 3D directly in your browser. Makers Vault is fully self-hostable using Docker and accessible through your web browser for ease of use and deployment.</p> <h2>Makers Vault Home Screen</h2>
+- **Reliable Docker deployments** with prebuilt images and a production-ready compose file.
+- **Reverse-proxy-friendly networking** via `PUBLIC_URL` and `/api` routing.
+- **Smoother authentication UX**, including fixes for repeated session-expired dialogs and stale-token handling.
+- **Continued maintenance** of the FastAPI + React stack.
+- **performance improvements** by shifting the rendering to the backend
+- **UI overhaul** for a cleaner and more streamlined look
 
-<img width="1898" height="940" alt="Screenshot 2025-12-31 093628" src="https://github.com/user-attachments/assets/5d1b62d7-73ce-4dff-b1f5-001195ea2ff2" />
+## Quick start with Docker Compose (local)
 
+The fastest way to run the app locally is with the production-oriented compose files in [`makervault/`](makervault/):
 
-<h2>Tech Stack</h2>
-<ul>
-  <li>Frontend: React + TypeScript (Vite), Tailwind CSS, three.js, occt-import-js.</li>
-  <li>Backend: FastAPI (Python), SQLModel, SQLite.</li>
-  <li>Slicer Bridge: Go (custom protocol handler).</li>
-  <li>Deployment: Docker, Docker Compose.</li>
-</ul>
+- [`docker-compose.deploy.yml`](makervault/docker-compose.deploy.yml) — base stack (API is internal-only).
+- [`docker-compose.deploy.local.yml`](makervault/docker-compose.deploy.local.yml) — override that publishes the API port on the host for direct/LAN use.
 
-<h2>Road Map</h2>
-<h4>Version 5.1</h4>
-<ul>
-  <li>Open in Lightburn Setting</li>
-  <li>MFA and multi-user</li>
-  <li>New themes</li>
-  <li>Bulk move</li>
-  <li>View sub-folders in root folders.</li>
-  <li>Robust handling for adding existing folders from OS.</li>
-</ul>
-
-<h2>Getting Started</h2>
-<p>Makers Vault is deployable using Docker pull or Docker Compose:</p>
-<h3>Docker Compose</h3>
-
-```yaml
-version: "3.9"
-
-services:
-  api:
-    image: ${API_IMAGE:-shotgunwilly555/makersvault-api:latest}
-    restart: unless-stopped
-    environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-      - AUTH_USERNAME=${AUTH_USERNAME:-admin}
-      - AUTH_PASSWORD=${AUTH_PASSWORD:-super-secret}
-      - AUTH_SECRET=${AUTH_SECRET:-changeme-secret}
-      - AUTH_TOKEN_TTL=${AUTH_TOKEN_TTL:-43200}
-      - FILE_STORAGE=/app/storage
-      - DB_URL=sqlite:////app/data/app.db
-      - PUBLIC_URL=${PUBLIC_URL:-}
-      - CORS_ORIGINS=${CORS_ORIGINS:-}
-      - IMPORT_MOUNT_PATH=${IMPORT_MOUNT_PATH:-/imports}
-      - IMPORT_MOUNT_EXTS=${IMPORT_MOUNT_EXTS:-stl,3mf,step,stp,obj,svg,png,jpg,jpeg,webp,bmp,lbrn,lbrn2,zip}
-      - IMPORT_MOUNT_INCLUDE_HIDDEN=${IMPORT_MOUNT_INCLUDE_HIDDEN:-false}
-      - IMPORT_MOUNT_ON_STARTUP=${IMPORT_MOUNT_ON_STARTUP:-true}
-    volumes:
-      - makersvault_storage:/app/storage
-      - makersvault_db:/app/data
-      - ${IMPORT_MOUNT_PATH_HOST:-/path/to/imports}:/imports:ro
-    ports:
-      - "${API_PORT:-8000}:8000"
-
-  web:
-    image: ${WEB_IMAGE:-shotgunwilly555/makersvault-web:latest}
-    restart: unless-stopped
-    environment:
-      - PUBLIC_URL=${PUBLIC_URL:-}
-      - VITE_API_URL=${VITE_API_URL:-}
-      - VITE_ALLOWED_HOSTS=${VITE_ALLOWED_HOSTS:-}
-      - CORS_ORIGINS=${CORS_ORIGINS:-}
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-    ports:
-      - "5173:5173"
-    depends_on:
-      - api
-
-volumes:
-  makersvault_storage:
-  makersvault_db:
-
-```
-
-<h3>Docker Pull</h3>
-
-```yaml
-docker pull shotgunwilly555/makersvault-api:latest
-docker pull shotgunwilly555/makersvault-web:latest
-
-docker run -d --name mv-api -p 8000:8000 \
-  -e AUTH_USERNAME=admin -e AUTH_PASSWORD=super-secret \
-  shotgunwilly555/makersvault-api:latest
-
-docker run -d --name mv-web -p 5173:5173 \
-  -e VITE_API_URL=http://10.0.0.160:8000 \
-  shotgunwilly555/makersvault-web:latest
-
-```
-
-<h3>Setting up the .env file</h3>
-<p>Create a <strong>.env</strong> file in the same folder as <code>docker-compose.yml</code>. Start with this baseline:</p>
-
-```yaml
-PUID=1000
-PGID=1000
-API_IMAGE=shotgunwilly555/makersvault-api:latest
-WEB_IMAGE=shotgunwilly555/makersvault-web:latest
-FILE_STORAGE=/app/storage
-DB_URL=sqlite:///./app.db
-API_PORT=8000
-PUBLIC_URL=
-CORS_ORIGINS=
-VITE_API_URL=
-VITE_ALLOWED_HOSTS=
-AUTH_USERNAME=admin
-AUTH_PASSWORD=super-secret
-AUTH_SECRET=replace-with-random-secret
-AUTH_TOKEN_TTL=43200
-IMPORT_MOUNT_PATH=/imports
-IMPORT_MOUNT_PATH_HOST=/path/to/imports
-IMPORT_MOUNT_EXTS=stl,3mf,step,stp,obj,svg,png,jpg,jpeg,webp,bmp,lbrn,lbrn2,zip
-IMPORT_MOUNT_INCLUDE_HIDDEN=false
-IMPORT_MOUNT_ON_STARTUP=true
-```
-
-<p>For direct/LAN mode, set <code>VITE_API_URL</code> to a browser-reachable API URL (for example, <code>http://10.0.0.160:8000</code>).</p>
-
-<h3>Reverse Proxy Support (Any Provider)</h3>
-<p>Makers Vault is reverse-proxy agnostic. Nginx Proxy Manager, Traefik, Nginx, Caddy, HAProxy, and Apache all work.</p>
-<p><strong>Required routes:</strong></p>
-<ul>
-  <li><code>/</code> to <code>web:5173</code></li>
-  <li><code>/api/*</code> to <code>api:8000</code></li>
-</ul>
-<p><strong>Important:</strong> configure your proxy so public <code>/api/assets</code> reaches the API service route for <code>/assets</code>.</p>
-
-<h4>Recommended flow for proxied setups</h4>
-<p>Start containers:</p>
+### 1. Clone the repository
 
 ```bash
-docker compose -f docker-compose.yml up -d
+git clone <repository-url>
+cd MakersVault
 ```
 
-<ol>
-  <li>Bring the stack up with Docker Compose.</li>
-  <li>Configure your reverse proxy routes (<code>/</code> and <code>/api/*</code>).</li>
-  <li>Set <code>PUBLIC_URL</code> in <code>.env</code> (for example, <code>https://makersvault.example.com</code>) and restart.</li>
-  <li>Open Makers Vault at your public domain.</li>
-</ol>
-<p>When served on standard proxy ports (80/443), Makers Vault automatically calls the API at <code>&lt;current-origin&gt;/api</code>.</p>
+### 2. Create an `.env` file
 
-<h4>Environment values when using a reverse proxy</h4>
-<ul>
-  <li>Set <code>PUBLIC_URL</code> to your public domain URL.</li>
-  <li>Leave <code>VITE_API_URL</code> empty unless you intentionally want a non-default API target.</li>
-  <li>Set <code>CORS_ORIGINS</code> as needed for direct/LAN access or additional origins.</li>
-</ul>
-<p>Example:</p>
+Create a file named `.env` in the repository root (next to `docker-compose.deploy.yml`):
 
-```yaml
-PUBLIC_URL=https://makersvault.example.com
-CORS_ORIGINS=https://makersvault.example.com,http://10.0.0.160:5173
-VITE_API_URL=
+```env
+PUID=1000
+PGID=1000
+AUTH_USERNAME=admin
+AUTH_PASSWORD=super-secret
+AUTH_SECRET=replace-with-a-random-secret
+AUTH_TOKEN_TTL=86400
+PUBLIC_URL=
+CORS_ORIGINS=http://localhost:8080
+VITE_API_URL=http://localhost:8000
 VITE_ALLOWED_HOSTS=
+WEB_PORT=8080
+API_PORT=8000
 ```
 
-<p><strong>Running as non-root:</strong> set <code>PUID</code> and <code>PGID</code> to your host user/group IDs (defaults to 1000). Containers create a matching user at startup so volume mounts stay writable.</p>
-<p><strong>Keeping API internal:</strong> when everything is behind a reverse proxy, you can remove <code>ports</code> from <code>api</code> and use <code>expose: ["8000"]</code> instead.</p>
-
-<h4>Quick troubleshooting</h4>
-<ul>
-  <li>Login fails with CORS error: add the public domain to <code>CORS_ORIGINS</code>.</li>
-  <li>UI loads but API calls 404 under <code>/api</code>: fix proxy mapping so <code>/api/*</code> reaches API routes correctly.</li>
-  <li>LetsEncrypt HTTP-01 challenge fails and returns app HTML: make sure external port 80 points to your reverse proxy (not directly to Makers Vault).</li>
-  <li>Public login fails while LAN/direct works: clear/avoid hardcoded private-IP <code>VITE_API_URL</code> for proxied access.</li>
-</ul>
+> Change `AUTH_USERNAME`, `AUTH_PASSWORD`, and `AUTH_SECRET` before exposing the app to a network.
 
-<p>Change the default credentials in <code>.env</code> before exposing the app publicly.</p>
+### 3. Start the stack
 
-<h2>Contributing</h2> 
-<p>Contributions are always welcome, whether it be bug fixes or feature improvements. For large changes, please open a discussion first!</p> <h2>Feature Requests and Bug Reporting</h2> <p>For bug reports or feature improvement requests, please open an issue or start a discussion thread.</p> 
-<h2>Features, UI Walkthrough, and Supported File Types</h2> 
-<h3>Supported File Types</h3> <p>Makers Vault supports the following file types:</p>
-<h3>3D Print Files:</h3> 
-<ul> 
-  <li>STL</li> 
-  <li>STEP</li> 
-  <li>OBJ</li> 
-  <li>3MF</li> 
-  <li>STP</li> 
-</ul> 
-<h3>Image Types:</h3> 
-<ul> 
-  <li>SVG</li> 
-  <li>PNG</li> 
-  <li>JPG</li> 
-  <li>WEBP</li> 
-  <li>BMP</li> 
-</ul> 
-<h3>Other File Types</h3>
-<p>Most other file types (docx, ppt, pdf, zip, etc.) are supported, but they will not render a preview. Makers Vault is mainly designed for 3D printing files, CAD, and artistic illustrations. If you need a document-focused solution, other tools may be more suitable. That said, feel free to request features if needed!</p>
-<h3>Feature List</h3> 
-<p>Makers Vault is intentionally kept simple to remain user-friendly while still being feature-rich for its purpose:</p> 
-<ul> 
-  <li>Create and delete folders.</li> 
-  <li>Tag any document uploaded to Makers Vault.</li>
-  <li>Sort, search, and rename documents.</li>
-  <li>Add notes to documents.</li>
-  <li>Toggle between light and dark mode for better viewing of differently colored 3D models.</li>
-  <li>Create username and password for added security when running behind a reverse proxy.</li>
-  <li>Move or delete files from within the application.</li>
-  <li>Drag and drop upload.</li> 
-  <li>Customization Themes.</li>
-  <li>Open in Slicer (Beta).</li>
-  <li>Import from link (MakerWorld, Thingiverse, and Printables).</li>
-  <li>Batch tagging and batch deleting.</li>
-  <li>Search at mount point for eligible file types.</li>
-  <li>Robust handling of .zip imports.</li>	
-</ul> 
+**if you do NOT have a reverse proxy like nginx or HAproxy):**
 
-<h2>UI and Feature Walkthrough</h2>
-<p><strong>NOTE:</strong> For initial install instructions refer to the Getting Started section.</p>
-<h3>Logging in for the First Time</h3> 
+```bash
+docker compose \
+  -f makervault/docker-compose.deploy.yml \
+  -f makervault/docker-compose.deploy.local.yml \
+  up -d
+```
 
-<img width="1906" height="932" alt="Screenshot 2025-12-31 094250" src="https://github.com/user-attachments/assets/a8804762-8ea4-4187-adc7-1312993d8d2d" />
+**if you DO have a reverse proxy:**
 
+```bash
+docker compose -f makervault/docker-compose.deploy.yml up -d
+```
 
-<p>Log in using the default password set in the .env file, or a custom password if configured (recommended).</p>
-<h3>Landing Page / All Items</h3> 
+### 4. Open the app
 
-<img width="1913" height="941" alt="Screenshot 2025-12-31 094437" src="https://github.com/user-attachments/assets/e0fe9bb1-812e-45c5-a1dc-c0dc790b8be6" />
+Browse to:
 
+```
+http://localhost:8080
+```
+ (or the port and domain you configured manually via `.env` file)
 
-<h2>Uploading Files</h2>
-<p>Makers Vault supports both single-file, batch uploads, and drag and drop. To upload a file, click the Upload button in the top-right corner. To upload a folder, use the Upload Folder button and select the entire folder. This action can also be performed by utilizing the drag and drop function </p> 
+Log in with the credentials from your `.env` file.
 
-<img width="1912" height="936" alt="Screenshot 2025-12-31 100124" src="https://github.com/user-attachments/assets/ef14d95e-fb73-4f38-a8b9-2bbb0391c326" />
+### Direct/LAN mode vs reverse-proxy mode
 
+The same base compose file works for both setups by adding or omitting the local override:
 
-<p><strong>NOTE:</strong> Depending on the number and size of the files, upload and preview generation may take some time. Please be patient.</p> 
+| Mode | Compose files | `PUBLIC_URL` | `VITE_API_URL` | `CORS_ORIGINS` | API port |
+|------|---------------|--------------|----------------|----------------|----------|
+| Direct/LAN | `docker-compose.deploy.yml` + `docker-compose.deploy.local.yml` | empty | `http://localhost:8000` | `http://localhost:8080` | host-mapped via `API_PORT` |
+| Reverse proxy | `deploy.yml` only | `https://mv.example.com` | empty | your public origin(s) | internal only (`expose`) |
 
-<h3>Uploading Single/Multiple Files</h3>
 
-<img width="1912" height="936" alt="Screenshot 2025-12-31 100124" src="https://github.com/user-attachments/assets/fbfbea6b-0851-490d-803b-5b12fb320623" />
+### 5. Stopping the stack
 
+```bash
+docker compose -f makervault/docker-compose.deploy.yml down
+```
 
-<h3>Dragging and Dropping to Upload</h3>
-<p>Files that are dragged and dropped to upload will be placed in whatever folder is currently selected. For example: You are clicked into the folder "3D prints" and drag files into Makers Vault, it will upload to that location.</p>
+To remove persistent volumes as well, add `-v`:
 
-<img width="1914" height="935" alt="Screenshot 2025-12-31 100230" src="https://github.com/user-attachments/assets/4a4abbbf-ee7c-4872-b6ec-306c36b6d846" />
+```bash
+docker compose -f makervault/docker-compose.deploy.yml down -v
+```
 
+If you used the local override, include it when stopping too:
 
-<h3>Importing via Link (Beta)</h3>
-<p>The currently supported 3D printing repository sites are:
-	<ul>
-		<li>MakerWorld</li>
-		<li>Printables</li>
-		<li>Thingiverse</li>
-	</ul>
-In the future there are plans to add support for more websites, but in this current release only the three listed will function. The root link from the respective repository can be used to import any models. Most models will import as a .zip file. When a zip file is imported a pop-up will appear prompting to either save as a zip or unzip and save. Unzip and save allows the user to select which files to keep and which to discard. This helps to ensure that unecessary "read-me" files aren't uploaded.
-</p>
+```bash
+docker compose \
+  -f makervault/docker-compose.deploy.yml \
+  -f makervault/docker-compose.deploy.local.yml \
+  down -v
+```
 
-<img width="4400" height="2129" alt="Import_From_Link" src="https://github.com/user-attachments/assets/515f0e95-72e7-4ea3-81ba-3d8023f4cff3" />
+## What's different from upstream?
 
-<img width="1913" height="937" alt="Screenshot 2025-12-31 101451" src="https://github.com/user-attachments/assets/a397fd46-d808-46b3-b83f-d1e025be8608" />
+| Area | Change |
+|------|--------|
+| Images | Prebuilt images published to `ghcr.io/toxic-garden/makersvaultrevived-api` and `ghcr.io/toxic-garden/makersvaultrevived-web`. |
+| Compose | `makervault/docker-compose.deploy.yml` is tuned for local or server deployment with volumes and health-preserving defaults. |
+| Auth UX | Fixed repeated "Your session has expired" alerts caused by concurrent 401 responses and stale tokens. |
+| removed unused functions | the slicer bridge was removed, as it does not make sense in my opinion 
+| Theme cleanup | the themes and the overall UI are now more streamlined 
+| Performance improvements | Thumbnails are now generated on the backend after upload/import, so no heavy CPU usage on the client when browsing the library
+| several bugfixes | like the max upload size, Session timeout notifications, multiple folder creations when uploading ZIP files and some more
 
-<img width="1907" height="932" alt="Screenshot 2025-12-31 101512" src="https://github.com/user-attachments/assets/84983739-6730-4155-9027-f601c7ae7bca" />
 
-<img width="1903" height="934" alt="Screenshot 2025-12-31 101923" src="https://github.com/user-attachments/assets/cfb322a0-f155-4b2e-b1c5-264fef84ae9c" />
+For development (hot-reload builds), use [`makervault/docker-compose.yml`](makervault/docker-compose.yml) instead.
 
-<h2>Model Rendering, Tagging, and Adding Notes</h2>
-<p>Makers Vault uses static 3D preview images in each tile to keep folder browsing fast. To view a fully interactive 3D preview, double-click the tile. In the pop-up window, you can rotate and inspect the 3D model interactively by clicking and holding with your mouse and dragging.</p>
+## Tech Stack
 
-<img width="1911" height="938" alt="Screenshot 2025-12-31 102102" src="https://github.com/user-attachments/assets/78b326af-d805-4054-a658-56751e9b125c" />
+- **Frontend:** React 18 + TypeScript, Vite, Tailwind CSS, three.js, occt-import-js.
+- **Backend:** FastAPI (Python), SQLModel, SQLite.
+- **Deployment:** Docker + Docker Compose.
 
+## License
 
-<p>Individual files can be renamed by double-clicking the Name field. The file extension (STL, STEP, 3MF, etc.) will be preserved even if removed by mistake.</p>
-
-<img width="323" height="498" alt="Screenshot 2025-12-31 102311" src="https://github.com/user-attachments/assets/1fea58d9-705c-4fa0-87b0-3008a562906f" />
-
-<h3>Tagging Files and Adding to Folders</h3> 
-<p>To begin organizing files, click “New” at the top left to create a new folder. To create a sub folder click the "..." next to the newly created folder and select "+ Subfolder". </p>
-
-<img width="4400" height="2156" alt="New_folder" src="https://github.com/user-attachments/assets/67b2fadd-ccc8-423f-af02-8778ca8b1e07" />
-
-<img width="1907" height="932" alt="Screenshot 2025-12-31 102622" src="https://github.com/user-attachments/assets/4f87cdbe-f6d4-4276-a9dc-294b51f8eae5" />
-
-
-<p>After creating a folder, assign files to it using the dropdown menu in each file tile. Alternatively, click the folder and then upload files directly — uploaded files will automatically be placed in the current folder.</p>
-
-<img width="1910" height="930" alt="Screenshot 2025-12-31 102708" src="https://github.com/user-attachments/assets/e1eae91e-e40a-4768-b13c-fe530a1055a9" />
-
-<img width="1909" height="935" alt="Screenshot 2025-12-31 102733" src="https://github.com/user-attachments/assets/0d46b249-45a9-4521-b6be-d69136a91f00" />
-
-<p>When entering tags, typing a comma will close the current tag and allow you to enter the next. Example: typing “3D Print,” will create a tag named “3D Print”.</p> 
-
-<img width="1890" height="933" alt="Screenshot 2025-12-31 102944" src="https://github.com/user-attachments/assets/418c9d71-1970-4755-808f-e5e633a27386" />
-
-<p>To sort by tags, click the matching tag tab at the top of the page. The sorting dropdown next to the search bar allows sorting by name, size, file type, and folder (ascending or descending).</p>
-
-<img width="1913" height="933" alt="Screenshot 2025-12-31 103028" src="https://github.com/user-attachments/assets/74ff7329-4856-4f55-8fe2-fc65846bdd42" />
-
-
-<h3>Batch Tagging and Deleting</h3>
-<p>The batch tagging and batch deleting feature utilizes the available select button on each individual render tile. Simply select as many models as needed and applying a tag to one will apply the tag to all selected. The same logic applies to batch deleting, any selected models will be deleted by utilizing the single delete button on any tile. </p>
-<h4>Batch Tagging</h4>
-
-<img width="1892" height="930" alt="Screenshot 2025-12-31 103532" src="https://github.com/user-attachments/assets/20b104e6-53ad-4019-b6e7-252a5e3a2cbf" />
-
-<img width="1893" height="937" alt="Screenshot 2025-12-31 103556" src="https://github.com/user-attachments/assets/de1baffc-1baa-42ca-a705-50ac686aae0e" />
-
-<h4>Batch Deleting</h4>
-
-<img width="1895" height="938" alt="Screenshot 2025-12-31 103647" src="https://github.com/user-attachments/assets/7f8709f0-9a1f-4159-b48f-229fbf266c84" />
-
-<img width="1895" height="941" alt="Screenshot 2025-12-31 103704" src="https://github.com/user-attachments/assets/68ca12f3-a52f-493a-8e0b-c3b273d43dc6" />
-
-
-<h2>Open in Slicer (Beta)</h2>
-<p>To utilize the open in slicer setting, first it is necessary to select the Slicer that you would like to use from Settings (near the bottom left corner) then select the sub-menu "Open in Slicer" </p>
-
-<img width="4405" height="2189" alt="Settings" src="https://github.com/user-attachments/assets/65a173d7-5b62-4b4b-8f92-73257648b3a7" />
-
-<img width="4400" height="2147" alt="OpeninSlicer" src="https://github.com/user-attachments/assets/38e7321b-53ef-43ad-ac96-3ceccc7c6c41" />
-
-<p>In the Open in Slicer Settings sub-menu there are many different supported Slicers (listed in the below image). </p>
-
-<img width="1911" height="930" alt="Screenshot 2025-12-31 105732" src="https://github.com/user-attachments/assets/653a5411-75eb-46b8-9945-2be4fbe6dcf0" />
-
-
-<p>Once the appropriate slicer is selected, note that the "Open in Slicer" button on each individual 3D model render tile is updated according to the selection.</p>
-
-<img width="317" height="485" alt="Screenshot 2025-12-31 110033" src="https://github.com/user-attachments/assets/486bde87-eb24-4ab0-b2d3-a1b56b78f114" />
-
-
-<h2>Slicer Bridge</h2>
-<p>For the Open in Slicer function to work, a standalone executable will need to be installed (supported for Windows and Linux). The bridge will need to be installed on any standalone machine, with the slicer installed. Example: You host Makers Vault on a Ubuntu Server but utilize the slicer on a Window's Laptop, the slicer bridge will need to be installed only once on the windows Laptop. Makers Vault is then accessed via the web browser from the Windows laptop, Open in Slicer button is clicked and the model is loaded into the Slicer of your choice.</p>
-
-<a href="https://github.com/VincentCinque/MakersVault/tree/main/makervault/slicer-bridge">The Slicer Bridge can be downloaded here.</a>
-
-<h2>Settings</h2>
-<p>The settings page is available from the button at the bottom-left of the app. Sub-menus include Open in Slicer, Reverse Proxy, Themes, and Imports.</p>
-<h3>Themes</h3>
-
-<img width="4405" height="2189" alt="Settings" src="https://github.com/user-attachments/assets/87eb158a-d2d3-48ce-a4ec-2a6e80955c99" />
-
-
-<p>The currently available themes are: System default, light, dark, neon green, neon purple, and neon blue. The themes change page accents as well as the background color.</p>
-
-<h2>Imports Settings</h2>
-<p>Makerworld enforces a 5 download only policy if not logged in. This will limit the amount of "Import from Link" requests you can make unless you place a cookie authentication token in the session cookie field in the import settings.
-	
-<strong> NOTE: The cookie session header is stored ONLY in the browser for security purpouses. Never share this value with anyone and avoid storing it elsewhere that can easily be accessed by someone else.</strong> </p>
-
-<img width="1912" height="929" alt="Screenshot 2025-12-31 113127" src="https://github.com/user-attachments/assets/8a0c3f83-6fc9-41be-874d-d9b90dc86797" />
-
-
-<h3>Finding the Cookie Session Header</h3>
-<p><strong>Chrome / Edge</strong></p>
-<ol>
-  <li>Sign in to makerworld.com or thingiverse.com.</li>
-  <li>Open DevTools (F12 or Ctrl+Shift+I) and go to the Network tab.</li>
-  <li>Reload the page to capture requests.</li>
-  <li>Click a request to the site (Type: document or fetch/xhr).</li>
-  <li>In Headers -&gt; Request Headers, copy the value of <code>Cookie</code> (everything after <code>Cookie:</code>).</li>
-</ol>
-<p><strong>Firefox</strong></p>
-<ol>
-  <li>Sign in to makerworld.com or thingiverse.com.</li>
-  <li>Open DevTools (F12), choose Network, and reload the page.</li>
-  <li>Select a request to the site and open the Headers panel.</li>
-  <li>Under Request Headers, copy the <code>Cookie</code> value (right-click -&gt; Copy Value).</li>
-</ol>
-<p><strong>Examples:</strong> MakerWorld cookies often include <code>mw_session</code> and <code>mw_token</code>. Thingiverse cookies often include <code>cf_clearance</code> and <code>PHPSESSID</code>.</p>
-<p><strong>Tip:</strong> Cookies expire. If imports fail later, repeat these steps to refresh the cookie.</p>
+This fork inherits the license of the original MakersVault project. See [`LICENSE`](LICENSE) for details.
