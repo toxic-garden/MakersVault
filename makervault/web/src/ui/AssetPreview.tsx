@@ -1,7 +1,7 @@
 import React from "react";
 import { Asset, fileUrl } from "../lib/api";
 import { ResolvedTheme } from "../lib/settings";
-import ModelViewer, { ModelSnapshot } from "./ModelViewer";
+import ModelViewer from "./ModelViewer";
 import LightBurnPreview from "./LightBurnPreview";
 
 const MODEL_EXTS = new Set(["stl", "3mf", "step", "stp", "obj"]);
@@ -13,6 +13,20 @@ export function extOf(name: string): string {
 }
 
 export type PreviewVariant = "card" | "modal";
+
+/** A simple SVG cube icon shown on cards for 3D files that have no server-side thumbnail yet. */
+function ModelFileIcon({ ext, className = "" }: { ext: string; className?: string }) {
+  return (
+    <div className={`flex flex-col items-center justify-center gap-1 ${className}`}>
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="opacity-50">
+        <path d="M12 2L3 7v10l9 5 9-5V7l-9-5z" strokeLinejoin="round" />
+        <path d="M3 7l9 5 9-5" strokeLinejoin="round" />
+        <path d="M12 12v10" strokeLinejoin="round" />
+      </svg>
+      <span className="text-xs font-mono opacity-50 uppercase">{ext}</span>
+    </div>
+  );
+}
 
 export function renderPreviewContent(asset: Asset, variant: PreviewVariant, theme: ResolvedTheme) {
   const ext = extOf(asset.filename);
@@ -33,7 +47,9 @@ export function renderPreviewContent(asset: Asset, variant: PreviewVariant, them
       return <img src={assetUrl} alt={asset.filename} className={imgClass} />;
     }
     if (is3d) {
-      return <ModelSnapshot url={assetUrl} ext={ext} assetId={asset.id} theme={theme} />;
+      // No server-side thumbnail yet — show a lightweight placeholder icon
+      // instead of spinning up a WebGL context per card.
+      return <ModelFileIcon ext={ext} className="w-full h-full" />;
     }
     if (isLightBurn) {
       return (

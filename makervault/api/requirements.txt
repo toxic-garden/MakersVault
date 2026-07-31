@@ -6,3 +6,9 @@ python-multipart==0.0.9
 pillow==10.4.0
 starlette==0.38.5
 PyJWT==2.9.0
+# 3D thumbnail generation (server-side)
+trimesh==4.5.3
+matplotlib==3.9.2
+lxml
+networkx
+numpy

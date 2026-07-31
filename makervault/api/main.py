@@ -61,12 +61,14 @@ from schemas import (
 )
 from zip_service import extract_zip_entries_to_assets, list_zip_entries
 from url_utils import normalize_import_url
+from thumb_3d import generate_3d_thumbnail
 
 app = FastAPI(title="MakerVault API")
 
 # Module-level dependency singletons
 AuthDep = Annotated[Optional[str], Depends(require_auth)]
 _IMAGE_THUMB_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+_3D_THUMB_EXTS = {".stl", ".obj", ".3mf"}
 
 
 def build_mount_import_response() -> MountImportSettingsOut:
@@ -78,7 +80,12 @@ def build_mount_import_response() -> MountImportSettingsOut:
 
 
 def is_thumb_eligible(mime: Optional[str], suffix: str) -> bool:
-    return bool(mime and mime.startswith("image/") and suffix.lower() in _IMAGE_THUMB_EXTS)
+    s = suffix.lower()
+    if mime and mime.startswith("image/") and s in _IMAGE_THUMB_EXTS:
+        return True
+    if s in _3D_THUMB_EXTS:
+        return True
+    return False
 
 
 def normalize_origin(raw: str) -> Optional[str]:
@@ -171,7 +178,11 @@ def to_out(a: Asset) -> AssetOut:
         notes=a.notes,
         tags=tags,
         url=f"/file/{a.id}/{safe_filename}",
-        thumb_url=f"/thumb/{a.id}.jpg" if (THUMBS / f"{a.id}.jpg").exists() else None,
+        thumb_url=(
+            f"/thumb/{a.id}.png" if (THUMBS / f"{a.id}.png").exists()
+            else f"/thumb/{a.id}.jpg" if (THUMBS / f"{a.id}.jpg").exists()
+            else None
+        ),
         folder_id=a.folder_id,
     )
 
@@ -293,7 +304,10 @@ async def persist_uploaded_asset(
                     raise HTTPException(status_code=413, detail="Uploaded file exceeds size limit")
                 f.write(chunk)
         if is_thumb_eligible(asset.mime, dest.suffix):
-            save_thumb(asset.id, dest)
+            if dest.suffix.lower() in _3D_THUMB_EXTS:
+                generate_3d_thumbnail(asset.id, dest, dest.suffix.lower().lstrip("."))
+            else:
+                save_thumb(asset.id, dest)
     except Exception:
         cleanup_asset(asset.id)
         raise
@@ -313,6 +327,40 @@ async def upload(
 ):
     asset = await persist_uploaded_asset(file, title, notes, tags, folder_id)
     return to_out(asset)
+
+
+@app.post("/admin/generate-missing-thumbnails")
+def generate_missing_thumbnails(_: AuthDep):
+    """Backfill endpoint: generate thumbnails for 3D assets that don't have one yet.
+
+    Scans all assets with a 3D extension, checks if a thumbnail exists in the
+    THUMBS directory, and generates one if missing. Returns a summary of how
+    many were generated, skipped, or failed.
+    """
+    generated = 0
+    skipped = 0
+    failed = 0
+    with Session(engine) as s:
+        assets = s.exec(select(Asset)).all()
+        for asset in assets:
+            suffix = Path(asset.filename).suffix.lower()
+            if suffix not in _3D_THUMB_EXTS:
+                continue
+            thumb_jpg = THUMBS / f"{asset.id}.jpg"
+            thumb_png = THUMBS / f"{asset.id}.png"
+            if thumb_jpg.exists() or thumb_png.exists():
+                skipped += 1
+                continue
+            source = resolve_asset_file(asset)
+            if not source:
+                failed += 1
+                continue
+            result = generate_3d_thumbnail(asset.id, source, suffix.lstrip("."))
+            if result:
+                generated += 1
+            else:
+                failed += 1
+    return {"generated": generated, "skipped": skipped, "failed": failed}
 
 
 @app.post("/import", response_model=AssetOut)
@@ -388,12 +436,16 @@ def get_file(asset_id: str, name: str, _: AuthDep):
     )
 
 
-@app.get("/thumb/{asset_id}.jpg")
-def get_thumb(asset_id: str, _: AuthDep):
-    p = THUMBS / f"{asset_id}.jpg"
+@app.get("/thumb/{asset_id}.{ext}")
+def get_thumb(asset_id: str, ext: str, _: AuthDep):
+    ext = ext.lower()
+    if ext not in ("jpg", "png"):
+        raise HTTPException(404)
+    p = THUMBS / f"{asset_id}.{ext}"
     if not p.exists():
         raise HTTPException(404)
-    return FileResponse(p)
+    media_type = "image/png" if ext == "png" else "image/jpeg"
+    return FileResponse(p, media_type=media_type)
 
 
 # Allowed file extensions — 3D printing and laser engraving only

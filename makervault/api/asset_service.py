@@ -11,6 +11,7 @@ from db import STORAGE, THUMBS, engine
 from file_utils import build_import_filename, mime_from_content_type
 from models import Asset
 from schemas import ImportRequest
+from thumb_3d import THUMB_3D_EXTS, generate_3d_thumbnail
 
 
 def asset_dir(asset_id: str) -> Path:
@@ -95,6 +96,10 @@ def cleanup_asset(asset_id: str) -> None:
         (THUMBS / f"{asset_id}.jpg").unlink(missing_ok=True)
     except Exception:
         pass
+    try:
+        (THUMBS / f"{asset_id}.png").unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 def stream_response_to_file(resp, dest: Path) -> int:
@@ -128,6 +133,8 @@ def persist_asset_from_response(resp, final_url: str, body: ImportRequest) -> As
         size = stream_response_to_file(resp, dest)
         if (mime or "").startswith("image/") and dest.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
             save_thumb(asset.id, dest)
+        elif dest.suffix.lower() in THUMB_3D_EXTS:
+            generate_3d_thumbnail(asset.id, dest, dest.suffix.lower().lstrip("."))
         refreshed = finalize_asset_record(asset.id, size, mime)
         return refreshed or asset
     except HTTPException:
