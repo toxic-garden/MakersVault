@@ -7,3 +7,4 @@ api/storage/*
 api/data/*
 makervault/api/app.db
 media/notes/
+makervault/docs/docker-build-guide.md

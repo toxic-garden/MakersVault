@@ -241,16 +241,41 @@ variants in one step.
 
 ## Pushing to a registry
 
-### Log in
+### Automated builds with GitHub Actions
+
+The repository includes `.github/workflows/publish-docker.yml`. On every
+push to `main` or version tag it builds and pushes both images to the
+GitHub Container Registry (GHCR):
+
+- `ghcr.io/<owner>/makersvaultrevived-api`
+- `ghcr.io/<owner>/makersvaultrevived-web`
+
+Generated tags include:
+
+| Tag pattern | When generated |
+|---|---|---|
+| `latest` | push to `main` |
+| `main` | push to `main` |
+| `sha-<short-sha>` | every push/tag |
+| `v*.*.*` | version tag push |
+
+Pull requests against `main` also trigger the workflow, but only to **build**
+the images; they are **not pushed** to GHCR.
+
+### Manual login and push
+
+If you prefer to push manually, log in first:
 
 ```bash
-docker login                  # Docker Hub
-docker login registry.example.com   # Private registry
+# GitHub Container Registry
+echo $GITHUB_TOKEN | docker login ghcr.io -u <github-username> --password-stdin
+
+# Docker Hub or private registry
+docker login
+docker login registry.example.com
 ```
 
-### Tag and push
-
-For Docker Hub (no namespace prefix):
+Tag and push:
 
 ```bash
 docker push myregistry.example.com/makervault-api:1.0.0
@@ -265,6 +290,7 @@ move is to bump the version tag instead).
 ### Verify the push
 
 ```bash
+docker pull ghcr.io/<owner>/makersvaultrevived-api:latest
 docker pull myregistry.example.com/makervault-api:1.0.0
 ```
 
@@ -273,7 +299,23 @@ docker pull myregistry.example.com/makervault-api:1.0.0
 ## Running the production stack
 
 Once your images are pushed (or built locally), point `docker-compose.deploy.yml`
-at them:
+at them.
+
+### Default: GitHub Container Registry images
+
+The deploy compose defaults to the GHCR images published by the GitHub Actions
+workflow:
+
+```bash
+docker compose -f docker-compose.deploy.yml pull
+docker compose -f docker-compose.deploy.yml up -d
+```
+
+The default owner is `toxicgarden`. Override it with `GITHUB_OWNER`:
+
+```bash
+GITHUB_OWNER=myorg docker compose -f docker-compose.deploy.yml pull
+```
 
 ### Option 1: Use your own images
 
@@ -285,6 +327,9 @@ docker compose -f docker-compose.deploy.yml up -d
 ```
 
 ### Option 2: Use the official images
+
+If you are using the pre-built GHCR images from the automated workflow, the
+default `docker-compose.deploy.yml` already points to them. Just run:
 
 ```bash
 docker compose -f docker-compose.deploy.yml pull

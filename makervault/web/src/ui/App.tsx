@@ -5,7 +5,7 @@ import Sidebar from "./Sidebar";
 import Login from "./Login";
 import Settings from "./Settings";
 import { apiHealth, getApiBase, refreshToken, type HealthInfo } from "../lib/api";
-import { clearToken, readToken, storeToken } from "../lib/auth";
+import { clearToken, isTokenLocallyExpired, readToken, storeToken } from "../lib/auth";
 import { type AppSettings, type ResolvedTheme, loadSettings, resolveTheme, saveSettings } from "../lib/settings";
 import { UploadProgressInfo } from "../lib/uploadTree";
 import UploadProgressPanel from "./UploadProgressPanel";
@@ -27,13 +27,21 @@ const logoForTheme = (theme: ResolvedTheme) => {
 };
 
 export default function App() {
-  const [token, setToken] = React.useState<string | null>(() => readToken());
+  const [token, setToken] = React.useState<string | null>(() => {
+    // If the stored token is locally expired, discard it immediately so the
+    // login screen is shown instead of rendering the main UI with a stale token.
+    if (isTokenLocallyExpired()) {
+      clearToken();
+      return null;
+    }
+    return readToken();
+  });
   const [nonce, setNonce] = React.useState(0);
   const [folderId, setFolderId] = React.useState<string | null>(null);
   const [folderVersion, setFolderVersion] = React.useState(0);
   const [health, setHealth] = React.useState<HealthInfo | null>(null);
   const [tokenTtl, setTokenTtl] = React.useState<number | null>(null);
-  const [sessionExpired, setSessionExpired] = React.useState(false);
+  const sessionExpiredRef = React.useRef(false);
   const [activeView, setActiveView] = React.useState<"library" | "settings">("library");
   const [settings, setSettings] = React.useState<AppSettings>(() => loadSettings());
   const [uploadProgress, setUploadProgress] = React.useState<UploadProgressInfo[]>([]);
@@ -66,17 +74,18 @@ export default function App() {
     storeToken(tok);
     setToken(tok);
     setTokenTtl(ttl);
-    setSessionExpired(false);
+    sessionExpiredRef.current = false;
   };
 
   const handleUnauthorized = React.useCallback(() => {
-    if (sessionExpired) return;
+    // Use a synchronous ref so concurrent 401s only produce one alert.
+    if (sessionExpiredRef.current) return;
+    sessionExpiredRef.current = true;
     clearToken();
     setToken(null);
     setTokenTtl(null);
-    setSessionExpired(true);
     alert("Your session has expired. Please sign in again.");
-  }, [sessionExpired]);
+  }, []);
 
   const handleFoldersChanged = React.useCallback(() => {
     setFolderVersion(v => v + 1);
@@ -95,6 +104,7 @@ export default function App() {
     clearToken();
     setToken(null);
     setTokenTtl(null);
+    sessionExpiredRef.current = false;
   };
 
   const resetSavedProxyUrl = () => {

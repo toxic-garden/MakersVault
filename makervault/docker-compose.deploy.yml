@@ -1,8 +1,11 @@
 version: "3.9"
 
+# Deploy compose for the GHCR-published images.
+# Override these image references with env vars if you want a different tag or registry.
+
 services:
   api:
-    image: registry.toxicgarden.de/makervault-api:0.0.1
+    image:  ghcr.io/toxic-garden/makersvaultrevived-api:latest
     restart: unless-stopped
     environment:
       - PUID=${PUID:-1000}
@@ -10,7 +13,7 @@ services:
       - AUTH_USERNAME=${AUTH_USERNAME:-admin}
       - AUTH_PASSWORD=${AUTH_PASSWORD:-super-secret}
       - AUTH_SECRET=${AUTH_SECRET:-changeme-secret}
-      - AUTH_TOKEN_TTL=${AUTH_TOKEN_TTL:-43200}
+      - AUTH_TOKEN_TTL=${AUTH_TOKEN_TTL:-86400}
       - FILE_STORAGE=/app/storage
       - DB_URL=sqlite:////app/data/app.db
       - PUBLIC_URL=${PUBLIC_URL:-}
@@ -22,7 +25,7 @@ services:
       - "8000"
 
   web:
-    image: registry.toxicgarden.de/makervault-web:0.0.1
+    image: docker pull ghcr.io/toxic-garden/makersvaultrevived-web:latest
     restart: unless-stopped
     environment:
       - PUBLIC_URL=${PUBLIC_URL:-}

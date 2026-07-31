@@ -3,7 +3,9 @@ import {
   appendTokenToUrl,
   authHeaders,
   clearToken,
+  isTokenLocallyExpired,
   readToken,
+  readTokenExpiry,
   storeToken,
 } from "./auth";
 
@@ -75,5 +77,48 @@ describe("appendTokenToUrl", () => {
     const result = appendTokenToUrl("not a url with spaces and special &chars?");
     // Fallback uses ? or & based on whether the URL already has a ?
     expect(result).toMatch(/token=jwt/);
+  });
+});
+
+function makeToken(payload: Record<string, unknown>): string {
+  const header = btoa(JSON.stringify({ alg: "none", typ: "JWT" }));
+  const body = btoa(JSON.stringify(payload));
+  return `${header}.${body}.signature`;
+}
+
+describe("readTokenExpiry", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("returns null when no token is stored", () => {
+    expect(readTokenExpiry()).toBeNull();
+  });
+
+  it("returns null for a malformed token", () => {
+    storeToken("not-a-jwt");
+    expect(readTokenExpiry()).toBeNull();
+  });
+
+  it("reads the exp claim from a valid-looking token", () => {
+    const exp = 1234567890;
+    storeToken(makeToken({ sub: "alice", exp }));
+    expect(readTokenExpiry()).toBe(exp);
+  });
+});
+
+describe("isTokenLocallyExpired", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("returns false when no token is stored", () => {
+    expect(isTokenLocallyExpired()).toBe(false);
+  });
+
+  it("returns false for a token that has not expired", () => {
+    storeToken(makeToken({ exp: Math.floor(Date.now() / 1000) + 60 }));
+    expect(isTokenLocallyExpired()).toBe(false);
+  });
+
+  it("returns true for a token that has expired", () => {
+    storeToken(makeToken({ exp: Math.floor(Date.now() / 1000) - 60 }));
+    expect(isTokenLocallyExpired()).toBe(true);
   });
 });

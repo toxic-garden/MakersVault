@@ -10,6 +10,7 @@ services:
       - FILE_STORAGE=/app/storage
       - DB_URL=sqlite:///./app.db
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173}
+      - AUTH_TOKEN_TTL=${AUTH_TOKEN_TTL:-86400}
     volumes:
       - ./data/storage:/app/storage
       - ./api:/app
