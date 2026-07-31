@@ -1,5 +1,4 @@
 import React from "react";
-import { colorForTag } from "./tagColors";
 
 type TagBadgeProps = {
   tag: string;
@@ -8,15 +7,12 @@ type TagBadgeProps = {
 };
 
 export default function TagBadge({ tag, className = "", onRemove }: TagBadgeProps) {
-  const colors = colorForTag(tag);
+  // Theme-aware styling: uses the current accent colour family so the pill
+  // is readable in light, dark, neon, purple, and blue themes.  The low-opacity
+  // background keeps it subtle while the accent text colour guarantees contrast.
   return (
     <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${className}`}
-      style={{
-        backgroundColor: colors.bg,
-        color: colors.text,
-        borderColor: colors.border,
-      }}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-accent-soft border-accent-soft text-accent ${className}`}
     >
       {tag}
       {onRemove && (

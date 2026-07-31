@@ -18,7 +18,6 @@ import {
 import AssetCard from "./AssetCard";
 import AssetPreviewModal from "./AssetPreviewModal";
 import TagInput from "./TagInput";
-import { colorForTag } from "./tagColors";
 import { ResolvedTheme } from "../lib/settings";
 import { entriesFromDataTransfer, uploadEntriesToFolder } from "../lib/uploadTree";
 import { buildUploadEntriesFromZip, isZipFile, readZipEntries } from "../lib/zipUtils";
@@ -757,19 +756,15 @@ export default function AssetGrid({
       {!!allTags.length && (
         <div className="flex flex-wrap gap-1.5">
           {allTags.map(t => {
-            const colors = colorForTag(t);
             const active = activeTags.includes(t);
             return (
               <button
                 key={t}
                 className={`px-2.5 py-1 rounded-full text-xs border transition-smooth ${
-                  active ? "ring-2 ring-offset-1 ring-[color:var(--mv-accent)] ring-offset-[color:var(--mv-bg)]" : ""
+                  active
+                    ? "bg-accent-soft border-accent-soft text-accent ring-2 ring-offset-1 ring-[color:var(--mv-accent)] ring-offset-[color:var(--mv-bg)]"
+                    : "border-panel-strong text-muted hover:bg-accent-soft hover:text-accent"
                 }`}
-                style={{
-                  backgroundColor: active ? colors.bg : "transparent",
-                  color: colors.text,
-                  borderColor: colors.border,
-                }}
                 onClick={()=>toggleTag(t)}
               >
                 {t}
