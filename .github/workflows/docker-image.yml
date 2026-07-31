@@ -1,0 +1,20 @@
+name: publish Docker image
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: MakersVaultRevived
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build the Docker image for API
+      run: docker build ./makervault/api/ --file Dockerfile --tag ${IMAGE_NAME}-api:$(date +%s)
+    - name: Build the Docker image for Web
+      run: docker build ./makervault/web/ --file Dockerfile --tag ${IMAGE_NAME}-web:$(date +%s)
+      
