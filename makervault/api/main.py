@@ -7,6 +7,7 @@ from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED, BadZipFile
 import tempfile
 import threading
+import time
 from typing import Annotated, List, Optional
 from urllib.parse import quote, urlparse
 import json
@@ -31,6 +32,7 @@ from db import STORAGE, THUMBS, engine, ensure_folder_parent_column, ensure_asse
 from file_utils import build_import_filename, mime_from_content_type, sanitize_filename
 from folder_service import validate_parent_folder
 from import_service import download_import_to_temp, import_asset_from_url, open_import_response
+from job_tracker import _JOBS, get_job, start_job, update_job
 from mount_import import scan_mount_imports
 from ai_tagging import (
   AI_API_KEY_KEY,
@@ -512,19 +514,23 @@ async def upload(
 
 
 @app.post("/admin/generate-missing-thumbnails")
-def generate_missing_thumbnails(_: AuthDep):
-    """Backfill endpoint: generate thumbnails for 3D assets that don't have one yet.
+def generate_missing_thumbnails(_: AuthDep = None):
+    """Start a background job that generates thumbnails for 3D assets that
+    don't have one yet.
 
-    Scans all assets with a 3D extension, checks if a thumbnail exists in the
-    THUMBS directory, and generates one if missing. Returns a summary of how
-    many were generated, skipped, or failed.
+    Returns the job id immediately; poll GET /admin/jobs/{job_id} for progress.
+    Useful for large mounted libraries where rendering takes a while.
     """
-    generated = 0
+    job = start_job(_thumbnail_backfill_worker) or {}
+    return {"job_id": job.get("id")}
+
+
+def _thumbnail_backfill_worker(job_id: str) -> None:
+    """Worker: render a thumbnail for every STL/OBJ/3MF asset without one."""
+    eligible: list = []
     skipped = 0
-    failed = 0
     with Session(engine) as s:
-        assets = s.exec(select(Asset)).all()
-        for asset in assets:
+        for asset in s.exec(select(Asset)).all():
             suffix = Path(asset.filename).suffix.lower()
             if suffix not in _3D_THUMB_EXTS:
                 continue
@@ -533,16 +539,46 @@ def generate_missing_thumbnails(_: AuthDep):
             if thumb_jpg.exists() or thumb_png.exists():
                 skipped += 1
                 continue
+            eligible.append(asset)
+
+    update_job(job_id, total=len(eligible), skipped=skipped)
+    generated = 0
+    failed = 0
+    for processed, asset in enumerate(eligible, start=1):
+        try:
             source = resolve_asset_file(asset)
             if not source:
                 failed += 1
-                continue
-            result = generate_3d_thumbnail(asset.id, source, suffix.lstrip("."))
-            if result:
-                generated += 1
             else:
-                failed += 1
-    return {"generated": generated, "skipped": skipped, "failed": failed}
+                result = generate_3d_thumbnail(
+                    asset.id, source, Path(asset.filename).suffix.lower().lstrip(".")
+                )
+                if result:
+                    generated += 1
+                else:
+                    failed += 1
+        except Exception:
+            failed += 1
+        update_job(job_id, processed=processed, generated=generated, failed=failed)
+
+    update_job(job_id, status="done", finished_at=time.time())
+    _prune_jobs()
+
+
+def _prune_jobs():
+    cutoff = time.time() - 3600
+    for key in list(_JOBS):
+        job = _JOBS[key]
+        if job.status in ("done", "error") and (job.finished_at or 0) < cutoff:
+            _JOBS.pop(key, None)
+
+
+@app.get("/admin/jobs/{job_id}")
+def get_admin_job_status(job_id: str, _: AuthDep = None):
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
 
 
 @app.post("/import", response_model=AssetOut)

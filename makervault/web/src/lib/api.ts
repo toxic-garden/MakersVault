@@ -644,17 +644,37 @@ export async function backfill3mfMetadata(assetId?: string): Promise<BackfillSum
   return res.json();
 }
 
-export type ThumbnailBackfillSummary = {
+export type ThumbnailBackfillStarted = {
+  job_id: string;
+};
+
+export type AdminJobStatus = {
+  id: string;
+  status: string; // running | done | error
+  total: number;
+  processed: number;
   generated: number;
   skipped: number;
   failed: number;
+  error?: string | null;
+  message?: string;
+  started_at: number;
+  finished_at?: number | null;
 };
 
-export async function generateMissingThumbnails(): Promise<ThumbnailBackfillSummary> {
+export async function generateMissingThumbnails(): Promise<ThumbnailBackfillStarted> {
   const res = await fetch(`${apiBase()}/admin/generate-missing-thumbnails`, {
     method: "POST",
     headers: authHeaders(),
   });
-  assertOk(res, "Thumbnail backfill failed");
+  assertOk(res, "Thumbnail backfill failed to start");
+  return res.json();
+}
+
+export async function getAdminJob(jobId: string): Promise<AdminJobStatus> {
+  const res = await fetch(`${apiBase()}/admin/jobs/${encodeURIComponent(jobId)}`, {
+    headers: authHeaders(),
+  });
+  assertOk(res, "Failed to read admin job status");
   return res.json();
 }

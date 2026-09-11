@@ -4,11 +4,13 @@ import {
   UnauthorizedError,
   createFolder,
   generateMissingThumbnails,
+  getAdminJob,
   getAiSettings,
   getMountImportSettings,
   testAiConnection,
   updateAiSettings,
   updateMountImportSettings,
+  type AdminJobStatus,
   type AiSettings,
 } from "../lib/api";
 import { entriesFromFileList, uploadEntriesToFolder, type UploadEntry } from "../lib/uploadTree";
@@ -148,7 +150,7 @@ export default function Settings({
   const folderInputRef = React.useRef<HTMLInputElement | null>(null);
   const uploadedKeysRef = React.useRef<Set<string>>(new Set());
   const [thumbBackfillBusy, setThumbBackfillBusy] = React.useState(false);
-  const [thumbBackfillResult, setThumbBackfillResult] = React.useState<string | null>(null);
+  const [thumbJob, setThumbJob] = React.useState<AdminJobStatus | null>(null);
   const [aiConfig, setAiConfig] = React.useState<AiSettings | null>(null);
   const [aiEndpointDraft, setAiEndpointDraft] = React.useState("");
   const [aiApiKeyDraft, setAiApiKeyDraft] = React.useState("");
@@ -293,18 +295,29 @@ export default function Settings({
   };
   const runThumbnailBackfill = async () => {
     setThumbBackfillBusy(true);
-    setThumbBackfillResult(null);
+    setThumbJob(null);
     try {
-      const r = await generateMissingThumbnails();
-      setThumbBackfillResult(
-        `${r.generated} generated, ${r.skipped} already had one, ${r.failed} failed`
-      );
+      const started = await generateMissingThumbnails();
+      const jobId = started.job_id;
+      // Poll until the job finishes.
+      let latest: AdminJobStatus | null = null;
+      for (let i = 0; i < 7200; i++) {
+        const status = await getAdminJob(jobId);
+        latest = status;
+        setThumbJob(status);
+        if (status.status === "done" || status.status === "error") break;
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      // Job is done; refresh the asset grid so new thumbnails appear.
       onAssetsChanged?.();
+      if (latest && latest.status === "error") {
+        setThumbJob({ ...latest, message: latest.error || "Job failed" });
+      }
     } catch (err) {
       if (err instanceof UnauthorizedError) {
         onUnauthorized?.();
       } else {
-        setThumbBackfillResult("Backfill failed. Check the server log.");
+        setThumbJob({ id: "local", status: "error", total: 0, processed: 0, generated: 0, skipped: 0, failed: 0, message: "Backfill failed to start." });
         console.error(err);
       }
     } finally {
@@ -871,8 +884,34 @@ export default function Settings({
             >
               {thumbBackfillBusy ? "Generating…" : "Generate missing thumbnails"}
             </button>
-            {thumbBackfillResult && (
-              <span className="text-xs font-medium text-muted">{thumbBackfillResult}</span>
+            {thumbJob && (
+              <div className="flex-1 min-w-[200px] flex flex-col gap-1">
+                {thumbJob.status === "done" ? (
+                  <span className="text-xs font-medium text-muted">
+                    Done — {thumbJob.generated} generated, {thumbJob.skipped} already had one, {thumbJob.failed} failed
+                  </span>
+                ) : thumbJob.status === "error" ? (
+                  <span className="text-xs font-medium text-red-500">
+                    {thumbJob.message || "Backfill failed"}
+                  </span>
+                ) : (
+                  <>
+                    <span className="text-xs font-medium text-muted">
+                      {thumbJob.processed}/{thumbJob.total} rendered · {thumbJob.generated} ok · {thumbJob.failed} failed
+                    </span>
+                    <div className="h-1.5 w-full rounded-full bg-panel-strong overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-accent transition-all"
+                        style={{
+                          width: thumbJob.total > 0
+                            ? `${Math.min(100, Math.round((thumbJob.processed / thumbJob.total) * 100))}%`
+                            : "0%",
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </div>
         </div>
