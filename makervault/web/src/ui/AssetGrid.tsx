@@ -9,6 +9,7 @@ import {
   generateTagsForAsset,
   generateTagsForAssets,
   backfill3mfMetadata,
+  regenerateAssetThumbnail,
   listAssets,
   listTags,
   listFolders,
@@ -84,6 +85,7 @@ export default function AssetGrid({
   const [aiReviewItems, setAiReviewItems] = useState<AiTagReviewItem[] | null>(null);
   const [aiApplying, setAiApplying] = useState(false);
   const [backfillBusy, setBackfillBusy] = useState(false);
+  const [thumbBusyIds, setThumbBusyIds] = useState<Set<string>>(new Set());
 
   const handleApiError = (err: unknown, message?: string) => {
     if (err instanceof UnauthorizedError) {
@@ -472,6 +474,22 @@ export default function AssetGrid({
       await refresh();
     } catch (err) {
       handleApiError(err, "Failed to save source URL. Please try again.");
+    }
+  };
+
+  const onRegenerateThumbnail = async (asset: Asset) => {
+    try {
+      setThumbBusyIds(prev => new Set(prev).add(asset.id));
+      await regenerateAssetThumbnail(asset.id);
+      await refresh();
+    } catch (err) {
+      handleApiError(err, "Thumbnail regeneration failed.");
+    } finally {
+      setThumbBusyIds(prev => {
+        const next = new Set(prev);
+        next.delete(asset.id);
+        return next;
+      });
     }
   };
 
@@ -985,6 +1003,8 @@ export default function AssetGrid({
                             onSaveNotes={onSaveNotes}
                             onSaveTitle={onSaveTitle}
                             onSaveSourceUrl={onSaveSourceUrl}
+                            onRegenerateThumbnail={onRegenerateThumbnail}
+                            thumbBusy={thumbBusyIds.has(it.id)}
                             onRename={onRename}
                             onPreview={setPreviewItem}
                             onDownloadSingle={downloadAsset}
@@ -1023,6 +1043,8 @@ export default function AssetGrid({
               onSaveNotes={onSaveNotes}
               onSaveTitle={onSaveTitle}
               onSaveSourceUrl={onSaveSourceUrl}
+              onRegenerateThumbnail={onRegenerateThumbnail}
+              thumbBusy={thumbBusyIds.has(it.id)}
               onRename={onRename}
               onPreview={setPreviewItem}
               onDownloadSingle={downloadAsset}

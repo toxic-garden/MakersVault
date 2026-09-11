@@ -678,3 +678,12 @@ export async function getAdminJob(jobId: string): Promise<AdminJobStatus> {
   assertOk(res, "Failed to read admin job status");
   return res.json();
 }
+
+export async function regenerateAssetThumbnail(assetId: string): Promise<Asset> {
+  const res = await fetch(`${apiBase()}/asset/${assetId}/thumbnail/regenerate`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  assertOk(res, "Thumbnail regeneration failed");
+  return res.json();
+}

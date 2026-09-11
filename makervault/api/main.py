@@ -26,7 +26,7 @@ from auth import (
     create_token,
     require_auth,
 )
-from asset_service import asset_path, cleanup_asset, finalize_asset_record, save_thumb, stream_response_to_file, apply_3mf_metadata
+from asset_service import asset_path, cleanup_asset, finalize_asset_record, save_thumb, stream_response_to_file, apply_3mf_metadata, thumb_exists
 from config import IMPORT_MAX_BYTES, MOUNT_IMPORT_ENABLED, MOUNT_IMPORT_PATH, MOUNT_IMPORT_COPY
 from db import STORAGE, THUMBS, engine, ensure_folder_parent_column, ensure_asset_source_path_column, ensure_asset_source_url_column, ensure_asset_indexes
 from file_utils import build_import_filename, mime_from_content_type, sanitize_filename
@@ -579,6 +579,49 @@ def get_admin_job_status(job_id: str, _: AuthDep = None):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+@app.post("/asset/{asset_id}/thumbnail/regenerate", response_model=AssetOut)
+def regenerate_asset_thumbnail(asset_id: str, _: AuthDep = None):
+    """Regenerate the thumbnail for a single asset.
+
+    For .3MF files the embedded plate thumbnail is preferred (same as at
+    upload time); otherwise a 3D render is produced. Any existing thumbnail is
+    overwritten. Returns the refreshed asset.
+    """
+    with Session(engine) as s:
+        asset = s.get(Asset, asset_id)
+        if not asset:
+            raise HTTPException(404)
+        filename = asset.filename
+    suffix = Path(filename).suffix.lower()
+    if suffix not in _3D_THUMB_EXTS and not is_thumb_eligible(asset.mime, filename):
+        raise HTTPException(status_code=400, detail="Thumbnail regeneration is only supported for 3D files")
+    source = resolve_asset_file(asset)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source file not found on disk")
+
+    # Clear the existing thumbnail first so the backfill path re-creates it.
+    for ext in (".jpg", ".png"):
+        (THUMBS / f"{asset_id}{ext}").unlink(missing_ok=True)
+
+    ok = False
+    if suffix in _3D_THUMB_EXTS:
+        ok = bool(generate_3d_thumbnail(asset_id, source, suffix.lstrip(".")))
+        if suffix == ".3mf":
+            # Prefer the slicer's embedded plate thumbnail when available.
+            apply_3mf_metadata(asset_id, source, overwrite_thumb=True)
+            ok = ok or thumb_exists(asset_id)
+    else:
+        ok = bool(save_thumb(asset_id, source))
+    if not ok:
+        raise HTTPException(status_code=500, detail="Thumbnail generation failed")
+
+    with Session(engine) as s:
+        refreshed = s.get(Asset, asset_id)
+        if not refreshed:
+            raise HTTPException(404)
+        return to_out(refreshed)
 
 
 @app.post("/import", response_model=AssetOut)

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Download, Folder as FolderIcon, Globe, Pencil, Sparkles, Trash2, Type } from "lucide-react";
+import { Download, Folder as FolderIcon, Globe, Image as ImageIcon, Pencil, Sparkles, Trash2, Type } from "lucide-react";
 import { Asset } from "../lib/api";
 import { ResolvedTheme } from "../lib/settings";
 import TagBadge from "./TagBadge";
@@ -12,6 +12,8 @@ export type AssetCardProps = {
   onSaveNotes: (id: string, notes: string) => void;
   onSaveTitle: (id: string, title: string) => void;
   onSaveSourceUrl: (id: string, sourceUrl: string) => void;
+  onRegenerateThumbnail: (asset: Asset) => void;
+  thumbBusy: boolean;
   onRename: (id: string, filename: string) => void;
   onPreview: (asset: Asset | null) => void;
   onDownloadSingle: (asset: Asset) => void;
@@ -37,6 +39,8 @@ export default function AssetCard({
   onSaveNotes,
   onSaveTitle,
   onSaveSourceUrl,
+  onRegenerateThumbnail,
+  thumbBusy,
   onRename,
   onPreview,
   onDownloadSingle,
@@ -447,6 +451,24 @@ export default function AssetCard({
                   </button>
                 </div>
               )}
+            </div>
+
+            {/* Thumbnail — regenerate single asset */}
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted font-medium">
+                <ImageIcon className="w-3 h-3" />
+                <span>Thumbnail</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="text-xs px-2 py-0.5 rounded-md border border-panel-strong text-muted hover:text-accent hover:bg-accent-soft transition-smooth shrink-0 disabled:opacity-60"
+                  onClick={() => onRegenerateThumbnail(item)}
+                  disabled={thumbBusy}
+                  title="Regenerate this file's thumbnail from the model (or the embedded 3MF plate image)"
+                >
+                  {thumbBusy ? "Generating…" : "Regenerate thumbnail"}
+                </button>
+              </div>
             </div>
 
             {/* AI tags row */}

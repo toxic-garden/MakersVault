@@ -78,11 +78,11 @@ def apply_3mf_metadata(asset_id: str, file_path: Path, overwrite_thumb: bool = T
         s.add(a)
         s.commit()
     if meta.get("thumbnail_bytes"):
-        if overwrite_thumb or not _thumb_exists(asset_id):
+        if overwrite_thumb or not thumb_exists(asset_id):
             save_thumb_bytes(asset_id, meta["thumbnail_bytes"])
 
 
-def _thumb_exists(asset_id: str) -> bool:
+def thumb_exists(asset_id: str) -> bool:
     return (THUMBS / f"{asset_id}.jpg").exists() or (THUMBS / f"{asset_id}.png").exists()
 
 
