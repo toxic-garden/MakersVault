@@ -44,6 +44,15 @@ VITE_API_URL=http://localhost:8000
 VITE_ALLOWED_HOSTS=
 WEB_PORT=8080
 API_PORT=8000
+
+# --- Optional: index an existing STL/3MF library (mount import) ---
+# The library folder is bind-mounted into the container (read-only) via
+# MOUNT_IMPORT_SOURCE, and IMPORT_MOUNT_PATH is the path INSIDE the container.
+# Disable COPY so the files stay in place instead of being duplicated.
+IMPORT_MOUNT_PATH=/library
+MOUNT_IMPORT_SOURCE=./3d-library
+IMPORT_MOUNT_ON_STARTUP=true
+IMPORT_MOUNT_COPY=false
 ```
 
 > Change `AUTH_USERNAME`, `AUTH_PASSWORD`, and `AUTH_SECRET` before exposing the app to a network.

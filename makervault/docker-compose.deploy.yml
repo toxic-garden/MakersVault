@@ -20,9 +20,20 @@ services:
       - DB_URL=sqlite:////app/data/app.db
       - PUBLIC_URL=${PUBLIC_URL:-}
       - CORS_ORIGINS=${CORS_ORIGINS:-}
+      # Mount import (server-side scan of an existing STL/3MF library, no copy)
+      - IMPORT_MOUNT_PATH=${IMPORT_MOUNT_PATH:-}
+      - IMPORT_MOUNT_ON_STARTUP=${IMPORT_MOUNT_ON_STARTUP:-true}
+      - IMPORT_MOUNT_COPY=${IMPORT_MOUNT_COPY:-false}
+      - IMPORT_MOUNT_EXTS=${IMPORT_MOUNT_EXTS:-}
+      - IMPORT_MOUNT_INCLUDE_HIDDEN=${IMPORT_MOUNT_INCLUDE_HIDDEN:-false}
     volumes:
       - makersvault_storage:/app/storage
       - makersvault_db:/app/data
+      # Bind-mount your existing STL/3MF library into the container so the
+      # mount-import scan can index it without copying. IMPORT_MOUNT_PATH must
+      # be set to the path INSIDE the container (e.g. /library). Map your host
+      # folder here, e.g.:  ./3d-library:/library:ro
+      - ${MOUNT_IMPORT_SOURCE:-./library}:/library:ro
     expose:
       - "8000"
 
