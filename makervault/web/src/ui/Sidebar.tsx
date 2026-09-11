@@ -330,17 +330,8 @@ export default function Sidebar({
     return map;
   }, [folders]);
 
-  // Default-expand root folders so they are visible
-  useEffect(() => {
-    const roots = childrenMap["__root"] || [];
-    if (!roots.length) return;
-    setExpanded(prev => {
-      const next = new Set(prev);
-      roots.forEach(r => next.add(r.id));
-      return next;
-    });
-  }, [childrenMap]);
-
+  // Folders start collapsed; expanding is manual (or automatic for the
+  // selected folder's path and the parent of a newly created folder).
   const toggleExpand = (id: string) => {
     setExpanded(prev => {
       const next = new Set(prev);
