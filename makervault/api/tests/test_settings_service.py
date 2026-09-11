@@ -1,6 +1,4 @@
 """Tests for api/settings_service.py — key/value AppConfig persistence."""
-from sqlmodel import Session
-
 from settings_service import (
     get_bool_setting,
     get_mount_import_copy,

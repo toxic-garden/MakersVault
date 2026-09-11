@@ -50,6 +50,7 @@ class AssetOut(BaseModel):
   size: int
   title: Optional[str]
   notes: Optional[str]
+  source_url: Optional[str]
   tags: List[str]
   url: str
   thumb_url: Optional[str]
@@ -98,6 +99,7 @@ class TagUpdate(BaseModel):
 class AssetMetaUpdate(BaseModel):
   title: Optional[str] = None
   notes: Optional[str] = None
+  source_url: Optional[str] = None
 
 
 class AssetRename(BaseModel):
@@ -115,3 +117,51 @@ class MountImportSettings(BaseModel):
 
 class MountImportSettingsOut(MountImportSettings):
   path: Optional[str] = None
+
+
+class AiSettingsOut(BaseModel):
+  endpoint: str
+  api_key_set: bool
+  model: str
+  max_tags: int
+  json_mode: bool
+  review_mode: bool
+  auto_tag: bool
+
+
+class AiSettingsUpdate(BaseModel):
+  endpoint: str = ""
+  api_key: Optional[str] = None
+  model: str = ""
+  max_tags: int = 10
+  json_mode: bool = True
+  review_mode: bool = True
+  auto_tag: bool = False
+
+
+class AiTagResult(BaseModel):
+  asset_id: str
+  ok: bool
+  tags: List[str] = []
+  applied: bool = False
+  error: Optional[str] = None
+
+
+class AiTagSingleOut(BaseModel):
+  asset: AssetOut
+  tags: List[str]
+  applied: bool
+
+
+class AiTagBatchOut(BaseModel):
+  results: List[AiTagResult]
+  failed: int
+
+
+class AiTestOut(BaseModel):
+  ok: bool
+  error: Optional[str] = None
+
+
+class AssetIdList(BaseModel):
+  asset_ids: List[str]

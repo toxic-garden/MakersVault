@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Download, Folder as FolderIcon, Pencil, Trash2, Type } from "lucide-react";
+import { Download, Folder as FolderIcon, Globe, Pencil, Sparkles, Trash2, Type } from "lucide-react";
 import { Asset } from "../lib/api";
 import { ResolvedTheme } from "../lib/settings";
 import TagBadge from "./TagBadge";
@@ -11,6 +11,7 @@ export type AssetCardProps = {
   onSaveTags: (id: string, tags: string[]) => void;
   onSaveNotes: (id: string, notes: string) => void;
   onSaveTitle: (id: string, title: string) => void;
+  onSaveSourceUrl: (id: string, sourceUrl: string) => void;
   onRename: (id: string, filename: string) => void;
   onPreview: (asset: Asset | null) => void;
   onDownloadSingle: (asset: Asset) => void;
@@ -23,6 +24,8 @@ export type AssetCardProps = {
   selected: boolean;
   onToggleSelected: () => void;
   bulkDownloading: boolean;
+  onGenerateAiTags: (asset: Asset) => void;
+  aiBusy: boolean;
   theme: ResolvedTheme;
 };
 
@@ -33,6 +36,7 @@ export default function AssetCard({
   onSaveTags,
   onSaveNotes,
   onSaveTitle,
+  onSaveSourceUrl,
   onRename,
   onPreview,
   onDownloadSingle,
@@ -45,6 +49,8 @@ export default function AssetCard({
   selected,
   onToggleSelected,
   bulkDownloading,
+  onGenerateAiTags,
+  aiBusy,
   theme,
 }: AssetCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -54,6 +60,8 @@ export default function AssetCard({
   const [notesValue, setNotesValue] = useState(item.notes || "");
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(item.title || "");
+  const [editingSourceUrl, setEditingSourceUrl] = useState(false);
+  const [sourceUrlValue, setSourceUrlValue] = useState(item.source_url || "");
   const [renaming, setRenaming] = useState(false);
   const [nameValue, setNameValue] = useState(item.filename);
   const nameInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -75,6 +83,12 @@ export default function AssetCard({
       setTitleValue(item.title || "");
     }
   }, [item.title, editingTitle]);
+
+  useEffect(() => {
+    if (!editingSourceUrl) {
+      setSourceUrlValue(item.source_url || "");
+    }
+  }, [item.source_url, editingSourceUrl]);
 
   useEffect(() => {
     if (!renaming) {
@@ -117,6 +131,16 @@ export default function AssetCard({
   const cancelTitle = () => {
     setEditingTitle(false);
     setTitleValue(item.title || "");
+  };
+
+  const saveSourceUrl = async () => {
+    await onSaveSourceUrl(item.id, sourceUrlValue.trim());
+    setEditingSourceUrl(false);
+  };
+
+  const cancelSourceUrl = () => {
+    setEditingSourceUrl(false);
+    setSourceUrlValue(item.source_url || "");
   };
 
   const handleTitleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -378,6 +402,70 @@ export default function AssetCard({
                   </button>
                 </div>
               )}
+            </div>
+
+            {/* Object Source — clean row */}
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted font-medium">
+                <Globe className="w-3 h-3" />
+                <span>Object Source</span>
+              </div>
+              {editingSourceUrl ? (
+                <div className="flex flex-col gap-1.5">
+                  <input
+                    value={sourceUrlValue}
+                    onChange={e => setSourceUrlValue(e.target.value)}
+                    placeholder="https://www.printables.com/… or https://makerworld.com/…"
+                    className="h-7 px-2 rounded-md border border-panel-strong bg-panel-soft text-xs"
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <button className="text-xs px-2 py-0.5 rounded-md bg-accent" onClick={saveSourceUrl}>Save</button>
+                    <button className="text-xs px-2 py-0.5 rounded-md border border-panel-strong" onClick={cancelSourceUrl}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {item.source_url ? (
+                    <a
+                      href={item.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs flex-1 truncate text-accent hover:underline"
+                      title={item.source_url}
+                    >
+                      {item.source_url}
+                    </a>
+                  ) : (
+                    <span className="text-xs flex-1 text-subtle italic">No source URL</span>
+                  )}
+                  <button
+                    className="text-xs px-2 py-0.5 rounded-md border border-panel-strong shrink-0"
+                    onClick={() => setEditingSourceUrl(true)}
+                  >
+                    {item.source_url ? "Edit" : "Set URL"}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* AI tags row */}
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted font-medium">
+                <Sparkles className="w-3 h-3" />
+                <span>AI tags</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="text-xs px-2 py-0.5 rounded-md border border-panel-strong text-muted hover:text-accent hover:bg-accent-soft transition-smooth shrink-0 disabled:opacity-60"
+                  onClick={() => onGenerateAiTags(item)}
+                  disabled={aiBusy}
+                  title="Generate tags with AI from the thumbnail"
+                >
+                  {aiBusy ? "Tagging…" : "Generate tags"}
+                </button>
+                {aiBusy && <span className="text-xs text-muted">Asking the model…</span>}
+              </div>
             </div>
 
             {/* Delete — divider + right-aligned danger button */}

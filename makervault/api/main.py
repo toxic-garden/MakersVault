@@ -25,13 +25,24 @@ from auth import (
     create_token,
     require_auth,
 )
-from asset_service import asset_path, cleanup_asset, finalize_asset_record, save_thumb, stream_response_to_file
+from asset_service import asset_path, cleanup_asset, finalize_asset_record, save_thumb, stream_response_to_file, apply_3mf_metadata
 from config import IMPORT_MAX_BYTES, MOUNT_IMPORT_ENABLED, MOUNT_IMPORT_PATH, MOUNT_IMPORT_COPY
-from db import STORAGE, THUMBS, engine, ensure_folder_parent_column, ensure_asset_source_path_column, ensure_asset_indexes
+from db import STORAGE, THUMBS, engine, ensure_folder_parent_column, ensure_asset_source_path_column, ensure_asset_source_url_column, ensure_asset_indexes
 from file_utils import build_import_filename, mime_from_content_type, sanitize_filename
 from folder_service import validate_parent_folder
 from import_service import download_import_to_temp, import_asset_from_url, open_import_response
 from mount_import import scan_mount_imports
+from ai_tagging import (
+  AI_API_KEY_KEY,
+  AiTagError,
+  AssetView,
+  apply_tags,
+  generate_tags_for_asset,
+  get_ai_settings,
+  maybe_autotag_asset,
+  save_ai_settings,
+  test_ai_connection,
+)
 from models import Asset, Folder
 from settings_service import (
     get_mount_import_copy,
@@ -58,6 +69,13 @@ from schemas import (
     ImportZipResult,
     MountImportSettings,
     MountImportSettingsOut,
+    AiSettingsOut,
+    AiSettingsUpdate,
+    AiTagResult,
+    AiTagSingleOut,
+    AiTagBatchOut,
+    AiTestOut,
+    AssetIdList,
 )
 from zip_service import extract_zip_entries_to_assets, list_zip_entries
 from url_utils import normalize_import_url
@@ -133,6 +151,7 @@ def on_startup():
     SQLModel.metadata.create_all(engine)
     ensure_folder_parent_column()
     ensure_asset_source_path_column()
+    ensure_asset_source_url_column()
     ensure_asset_indexes()
     if MOUNT_IMPORT_PATH and get_mount_import_enabled(MOUNT_IMPORT_ENABLED):
         threading.Thread(target=scan_mount_imports, daemon=True).start()
@@ -176,6 +195,7 @@ def to_out(a: Asset) -> AssetOut:
         size=a.size,
         title=a.title,
         notes=a.notes,
+        source_url=a.source_url,
         tags=tags,
         url=f"/file/{a.id}/{safe_filename}",
         thumb_url=(
@@ -233,6 +253,165 @@ def update_mount_import_settings(body: MountImportSettings, _: AuthDep):
     set_mount_import_enabled(body.enabled)
     set_mount_import_copy(body.copy_files)
     return build_mount_import_response()
+
+
+# AI tagging -----------------------------------------------------
+
+def _ai_error_to_http(exc: AiTagError, status: int = 502) -> HTTPException:
+    return HTTPException(status_code=status, detail=str(exc))
+
+
+@app.get("/ai/settings", response_model=AiSettingsOut)
+def get_ai_settings_endpoint(_: AuthDep):
+    s = get_ai_settings()
+    return AiSettingsOut(
+        endpoint=s.endpoint,
+        api_key_set=s.api_key_set,
+        model=s.model,
+        max_tags=s.max_tags,
+        json_mode=s.json_mode,
+        review_mode=s.review_mode,
+        auto_tag=s.auto_tag,
+    )
+
+
+@app.post("/ai/settings", response_model=AiSettingsOut)
+def update_ai_settings_endpoint(body: AiSettingsUpdate, _: AuthDep):
+    s = save_ai_settings(
+        endpoint=body.endpoint,
+        api_key=body.api_key,
+        model=body.model,
+        max_tags=body.max_tags,
+        json_mode=body.json_mode,
+        review_mode=body.review_mode,
+        auto_tag=body.auto_tag,
+    )
+    return AiSettingsOut(
+        endpoint=s.endpoint,
+        api_key_set=s.api_key_set,
+        model=s.model,
+        max_tags=s.max_tags,
+        json_mode=s.json_mode,
+        review_mode=s.review_mode,
+        auto_tag=s.auto_tag,
+    )
+
+
+@app.post("/ai/test", response_model=AiTestOut)
+def test_ai_endpoint(_: AuthDep):
+    try:
+        test_ai_connection()
+        return AiTestOut(ok=True, error=None)
+    except AiTagError as exc:
+        return AiTestOut(ok=False, error=str(exc))
+    except Exception:
+        return AiTestOut(ok=False, error="Unexpected error while contacting the AI endpoint")
+
+
+@app.post("/ai/tag/{asset_id}", response_model=AiTagSingleOut)
+def generate_ai_tags(asset_id: str, _: AuthDep):
+    """Generate tags for one asset. Applies them when review mode is off."""
+    with Session(engine) as s:
+        asset = s.get(Asset, asset_id)
+        if not asset:
+            raise HTTPException(404)
+        snapshot = AssetView(asset.id, asset.filename)
+    try:
+        tags = generate_tags_for_asset(snapshot)
+    except AiTagError as exc:
+        raise _ai_error_to_http(exc)
+    review_mode = get_ai_settings().review_mode
+    if review_mode:
+        return AiTagSingleOut(asset=to_out(asset), tags=tags, applied=False)
+    refreshed = apply_tags(asset_id, tags, "merge")
+    return AiTagSingleOut(asset=to_out(refreshed), tags=tags, applied=True)
+
+
+@app.post("/ai/tag", response_model=AiTagBatchOut)
+def generate_ai_tags_batch(body: AssetIdList, _: AuthDep):
+    """Generate tags for a selection. Applies them directly when review mode is off."""
+    results: List[AiTagResult] = []
+    settings = get_ai_settings()
+    with Session(engine) as s:
+        snapshots = {
+            a.id: AssetView(a.id, a.filename)
+            for aid in body.asset_ids
+            if (a := s.get(Asset, aid)) is not None
+        }
+    for asset_id in body.asset_ids:
+        snapshot = snapshots.get(asset_id)
+        if snapshot is None:
+            results.append(AiTagResult(asset_id=asset_id, ok=False, error="Asset not found"))
+            continue
+        try:
+            tags = generate_tags_for_asset(snapshot)
+            if settings.review_mode:
+                results.append(AiTagResult(asset_id=asset_id, ok=True, tags=tags, applied=False))
+            else:
+                apply_tags(asset_id, tags, "merge")
+                results.append(AiTagResult(asset_id=asset_id, ok=True, tags=tags, applied=True))
+        except AiTagError as exc:
+            results.append(AiTagResult(asset_id=asset_id, ok=False, error=str(exc)))
+        except Exception:
+            results.append(AiTagResult(asset_id=asset_id, ok=False, error="Unexpected error"))
+    failed = sum(1 for r in results if not r.ok)
+    return AiTagBatchOut(results=results, failed=failed)
+
+
+@app.post("/admin/backfill-3mf-metadata")
+def backfill_3mf_metadata(
+    asset_id: Optional[str] = Query(default=None, description="Optional: only backfill this one asset by id"),
+    _: AuthDep = None,
+):
+    """Backfill endpoint: extract embedded .3MF metadata for existing assets.
+
+    For every .3MF asset WITHOUT an already-set title (the typical "needs
+    metadata" case), re-extract title/notes/thumbnail from the file on disk.
+    Passing `asset_id` backfills only that asset. Returns a summary.
+
+    The embedded thumbnail only overwrites when none exists yet, so existing
+    slicer/rendered thumbnails are preserved.
+    """
+    done = 0
+    skipped = 0
+    failed = 0
+    not_3mf = 0
+
+    with Session(engine) as s:
+        if asset_id:
+            assets = [s.get(Asset, asset_id)]
+        else:
+            assets = list(s.exec(select(Asset)).all())
+
+    for asset in assets:
+        if not asset:
+            failed += 1
+            continue
+        suffix = Path(asset.filename).suffix.lower()
+        if suffix != ".3mf":
+            not_3mf += 1
+            continue
+        # Only useful for assets that still lack a title (our main backfill case).
+        if (asset.title or "").strip() and (asset.notes or "").strip():
+            skipped += 1
+            continue
+        source = resolve_asset_file(asset)
+        if not source:
+            failed += 1
+            continue
+        try:
+            # Backfill: never overwrite an existing thumbnail.
+            apply_3mf_metadata(asset.id, source, overwrite_thumb=False)
+            done += 1
+        except Exception:
+            failed += 1
+
+    return {
+        "done": done,
+        "skipped": skipped,
+        "failed": failed,
+        "not_3mf": not_3mf,
+    }
 
 
 @app.post("/login", response_model=LoginResponse)
@@ -306,6 +485,7 @@ async def persist_uploaded_asset(
         if is_thumb_eligible(asset.mime, dest.suffix):
             if dest.suffix.lower() in _3D_THUMB_EXTS:
                 generate_3d_thumbnail(asset.id, dest, dest.suffix.lower().lstrip("."))
+                apply_3mf_metadata(asset.id, dest)
             else:
                 save_thumb(asset.id, dest)
     except Exception:
@@ -313,6 +493,8 @@ async def persist_uploaded_asset(
         raise
 
     finalized = finalize_asset_record(asset.id, size, mime)
+    if finalized is not None:
+        maybe_autotag_asset(finalized.id, finalized.filename)
     return finalized or asset
 
 
@@ -586,6 +768,8 @@ def update_asset_meta(asset_id: str, body: AssetMetaUpdate, _: AuthDep):
             a.title = body.title
         if body.notes is not None:
             a.notes = body.notes
+        if "source_url" in body.model_fields_set:
+            a.source_url = body.source_url
         s.add(a)
         s.commit()
         s.refresh(a)

@@ -20,6 +20,7 @@ class Asset(SQLModel, table=True):
   notes: Optional[str] = None
   folder_id: Optional[str] = None
   source_path: Optional[str] = None
+  source_url: Optional[str] = None
 
 
 class AppConfig(SQLModel, table=True):

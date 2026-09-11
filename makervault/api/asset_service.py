@@ -1,3 +1,4 @@
+import io
 import json
 from pathlib import Path
 from typing import List, Optional
@@ -11,6 +12,7 @@ from db import STORAGE, THUMBS, engine
 from file_utils import build_import_filename, mime_from_content_type
 from models import Asset
 from schemas import ImportRequest
+from three_mf import extract_3mf_metadata
 from thumb_3d import THUMB_3D_EXTS, generate_3d_thumbnail
 
 
@@ -34,6 +36,54 @@ def save_thumb(asset_id: str, src: Path) -> Optional[str]:
         return f"/thumb/{asset_id}.jpg"
     except Exception:
         return None
+
+
+def save_thumb_bytes(asset_id: str, data: bytes) -> Optional[str]:
+    """Save raw image bytes as the asset thumbnail (e.g. a .3MF embedded image)."""
+    try:
+        thumb = THUMBS / f"{asset_id}.jpg"
+        with Image.open(io.BytesIO(data)) as im:
+            im = im.convert("RGB")
+            im.thumbnail((512, 512))
+            im.save(thumb, quality=88)
+        return f"/thumb/{asset_id}.jpg"
+    except Exception:
+        return None
+
+
+def apply_3mf_metadata(asset_id: str, file_path: Path, overwrite_thumb: bool = True) -> None:
+    """Fill MakerVault asset fields from embedded .3MF metadata.
+
+    Only fills title/notes when currently empty, so user-entered values win.
+    The embedded thumbnail is written when `overwrite_thumb` is True (default,
+    used at upload time so the slicer's plate preview replaces the 3D render);
+    pass False for backfills so an existing thumbnail is left untouched.
+    """
+    if (file_path.suffix or "").lower() != ".3mf":
+        return
+    try:
+        meta = extract_3mf_metadata(file_path)
+    except Exception:
+        return  # malformed zip etc. — never break the upload
+    if not meta:
+        return
+    with Session(engine) as s:
+        a = s.get(Asset, asset_id)
+        if not a:
+            return
+        if meta.get("title") and not (a.title or "").strip():
+            a.title = meta["title"]
+        if meta.get("notes") and not (a.notes or "").strip():
+            a.notes = meta["notes"]
+        s.add(a)
+        s.commit()
+    if meta.get("thumbnail_bytes"):
+        if overwrite_thumb or not _thumb_exists(asset_id):
+            save_thumb_bytes(asset_id, meta["thumbnail_bytes"])
+
+
+def _thumb_exists(asset_id: str) -> bool:
+    return (THUMBS / f"{asset_id}.jpg").exists() or (THUMBS / f"{asset_id}.png").exists()
 
 
 def create_asset_record(
@@ -135,7 +185,10 @@ def persist_asset_from_response(resp, final_url: str, body: ImportRequest) -> As
             save_thumb(asset.id, dest)
         elif dest.suffix.lower() in THUMB_3D_EXTS:
             generate_3d_thumbnail(asset.id, dest, dest.suffix.lower().lstrip("."))
+            apply_3mf_metadata(asset.id, dest)
         refreshed = finalize_asset_record(asset.id, size, mime)
+        if refreshed is not None:
+            maybe_autotag_asset(refreshed.id, refreshed.filename)
         return refreshed or asset
     except HTTPException:
         cleanup_asset(asset.id)

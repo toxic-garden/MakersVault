@@ -44,6 +44,7 @@ export type Asset = {
   size: number;
   title?: string | null;
   notes?: string | null;
+  source_url?: string | null;
   tags: string[];
   url: string; // relative to API host
   thumb_url?: string | null; // relative to API host
@@ -366,7 +367,7 @@ export async function setTags(id: string, tags: string[]) {
   return res.json();
 }
 
-export async function updateAssetMeta(id: string, payload: { title?: string | null; notes?: string | null }) {
+export async function updateAssetMeta(id: string, payload: { title?: string | null; notes?: string | null; source_url?: string | null }) {
   const res = await fetch(`${apiBase()}/asset/${id}/meta`, {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
@@ -526,5 +527,119 @@ export async function updateMountImportSettings(payload: {
     body: JSON.stringify(payload),
   });
   assertOk(res, "Failed to update mount import settings");
+  return res.json();
+}
+
+// AI tagging -----------------------------------------------------
+
+export type AiSettings = {
+  endpoint: string;
+  api_key_set: boolean;
+  model: string;
+  max_tags: number;
+  json_mode: boolean;
+  review_mode: boolean;
+  auto_tag: boolean;
+};
+
+export type AiTestResult = { ok: boolean; error?: string | null };
+
+export type AiTagResult = {
+  asset_id: string;
+  ok: boolean;
+  tags: string[];
+  applied: boolean;
+  error?: string | null;
+};
+
+export type AiTagSingle = {
+  asset: Asset;
+  tags: string[];
+  applied: boolean;
+};
+
+export type AiTagBatch = {
+  results: AiTagResult[];
+  failed: number;
+};
+
+export async function getAiSettings(): Promise<AiSettings> {
+  const res = await fetch(`${apiBase()}/ai/settings`, { headers: authHeaders() });
+  assertOk(res, "Failed to load AI settings");
+  return res.json();
+}
+
+export async function updateAiSettings(payload: {
+  endpoint: string;
+  api_key?: string | null;
+  model: string;
+  max_tags: number;
+  json_mode: boolean;
+  review_mode: boolean;
+  auto_tag: boolean;
+}): Promise<AiSettings> {
+  const res = await fetch(`${apiBase()}/ai/settings`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      endpoint: payload.endpoint,
+      api_key: payload.api_key ?? undefined,
+      model: payload.model,
+      max_tags: payload.max_tags,
+      json_mode: payload.json_mode,
+      review_mode: payload.review_mode,
+      auto_tag: payload.auto_tag,
+    }),
+  });
+  assertOk(res, "Failed to save AI settings");
+  return res.json();
+}
+
+export async function testAiConnection(): Promise<AiTestResult> {
+  const res = await fetch(`${apiBase()}/ai/test`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  assertOk(res, "AI test request failed");
+  return res.json();
+}
+
+export async function generateTagsForAsset(assetId: string): Promise<AiTagSingle> {
+  const res = await fetch(`${apiBase()}/ai/tag/${assetId}`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (res.status === 401) throw new UnauthorizedError();
+  if (!res.ok) {
+    const message = await readErrorMessage(res, "AI tag generation failed");
+    throw new Error(message);
+  }
+  return res.json();
+}
+
+export async function generateTagsForAssets(assetIds: string[]): Promise<AiTagBatch> {
+  const res = await fetch(`${apiBase()}/ai/tag`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ asset_ids: assetIds }),
+  });
+  assertOk(res, "AI tag generation failed");
+  return res.json();
+}
+
+export type BackfillSummary = {
+  done: number;
+  skipped: number;
+  failed: number;
+  not_3mf: number;
+};
+
+export async function backfill3mfMetadata(assetId?: string): Promise<BackfillSummary> {
+  const qs = assetId ? `?asset_id=${encodeURIComponent(assetId)}` : "";
+  const res = await fetch(`${apiBase()}/admin/backfill-3mf-metadata${qs}`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  assertOk(res, "3MF metadata backfill failed");
   return res.json();
 }

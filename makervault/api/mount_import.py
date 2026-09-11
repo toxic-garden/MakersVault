@@ -6,7 +6,8 @@ from typing import Optional
 
 from sqlmodel import Session, select
 
-from asset_service import asset_path, cleanup_asset, create_asset_record, finalize_asset_record, save_thumb
+from asset_service import asset_path, cleanup_asset, create_asset_record, finalize_asset_record, save_thumb, apply_3mf_metadata
+from ai_tagging import maybe_autotag_asset
 from config import (
     DEFAULT_MOUNT_IMPORT_EXTS,
     IMPORT_MAX_BYTES,
@@ -133,6 +134,9 @@ def scan_mount_imports() -> None:
                         if (mime or "").startswith("image/") and path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
                             save_thumb(asset.id, path)
                     finalize_asset_record(asset.id, size, mime)
+                    if path.suffix.lower() == ".3mf":
+                        apply_3mf_metadata(asset.id, path)
+                    maybe_autotag_asset(asset.id, asset.filename)
                     imported += 1
                     existing_sources.add(source_path)
                 except Exception:

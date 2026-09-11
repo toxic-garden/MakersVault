@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Download, FolderInput, Trash2, X } from "lucide-react";
+import { Download, FolderInput, Sparkles, Trash2, X } from "lucide-react";
 import {
   Asset,
   Folder,
   UnauthorizedError,
   deleteAsset,
   fileUrl,
+  generateTagsForAsset,
+  generateTagsForAssets,
+  backfill3mfMetadata,
   listAssets,
   listTags,
   listFolders,
@@ -14,9 +17,11 @@ import {
   updateAssetFolder,
   updateAssetMeta,
   downloadZip,
+  AiTagResult,
 } from "../lib/api";
 import AssetCard from "./AssetCard";
 import AssetPreviewModal from "./AssetPreviewModal";
+import AiTagReviewModal, { AiTagReviewItem } from "./AiTagReviewModal";
 import TagInput from "./TagInput";
 import { ResolvedTheme } from "../lib/settings";
 import { entriesFromDataTransfer, uploadEntriesToFolder } from "../lib/uploadTree";
@@ -74,6 +79,11 @@ export default function AssetGrid({
   const [dragActive, setDragActive] = useState(false);
   const [dropUploading, setDropUploading] = useState(false);
   const zipPrompt = useZipImportPrompt();
+  const [aiBusyIds, setAiBusyIds] = useState<Set<string>>(new Set());
+  const [aiBatchBusy, setAiBatchBusy] = useState(false);
+  const [aiReviewItems, setAiReviewItems] = useState<AiTagReviewItem[] | null>(null);
+  const [aiApplying, setAiApplying] = useState(false);
+  const [backfillBusy, setBackfillBusy] = useState(false);
 
   const handleApiError = (err: unknown, message?: string) => {
     if (err instanceof UnauthorizedError) {
@@ -456,6 +466,15 @@ export default function AssetGrid({
     }
   };
 
+  const onSaveSourceUrl = async (id: string, sourceUrl: string) => {
+    try {
+      await updateAssetMeta(id, { source_url: sourceUrl.trim() ? sourceUrl.trim() : null });
+      await refresh();
+    } catch (err) {
+      handleApiError(err, "Failed to save source URL. Please try again.");
+    }
+  };
+
   const onSaveTitle = async (id: string, title: string) => {
     try {
       await updateAssetMeta(id, { title: title || null });
@@ -563,7 +582,7 @@ export default function AssetGrid({
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteKeepFiles, setDeleteKeepFiles] = useState(false);
-  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleting, setBulkDeletingState] = useState(false);
   const [showMoveMenu, setShowMoveMenu] = useState(false);
   const [bulkMoving, setBulkMoving] = useState(false);
 
@@ -624,6 +643,141 @@ export default function AssetGrid({
     setBulkDeleting(false);
     setShowDeleteDialog(false);
     setDeleteKeepFiles(false);
+  };
+
+  const setBulkDeleting = setBulkDeletingState;
+  void setBulkDeleting;
+
+  const setAiBusy = (assetId: string, busy: boolean) => {
+    setAiBusyIds(prev => {
+      const next = new Set(prev);
+      if (busy) next.add(assetId);
+      else next.delete(assetId);
+      return next;
+    });
+  };
+
+  /** Generate tags for a single asset (or the whole selection). */
+  const generateAiTags = async (asset: Asset) => {
+    const targets =
+      selectedIds.has(asset.id) && selectedIds.size > 1
+        ? Array.from(selectedIds)
+        : [asset.id];
+    const unauthorised = () => {
+      onUnauthorized?.();
+      return true;
+    };
+    // Single asset
+    if (targets.length === 1) {
+      const target = targets[0];
+      setAiBusy(target, true);
+      try {
+        const single = await generateTagsForAsset(target);
+        if (single.applied) {
+          await refresh();
+        } else {
+          setAiReviewItems([{ asset: single.asset, tags: single.tags }]);
+        }
+      } catch (err) {
+        if (err instanceof UnauthorizedError && unauthorised()) return;
+        handleApiError(err, "AI tag generation failed.");
+      } finally {
+        setAiBusy(target, false);
+      }
+      return;
+    }
+    // Batch
+    setAiBatchBusy(true);
+    try {
+      const batch = await generateTagsForAssets(targets);
+      const appliedAny = batch.results.some(r => r.ok && r.applied);
+      if (appliedAny) {
+        await refresh();
+      }
+      if (batch.failed > 0) {
+        const firstError = batch.results.find(r => !r.ok)?.error;
+        alert(
+          `AI tagging finished with ${batch.failed} failure(s).` +
+            (firstError ? ` First error: ${firstError}` : "")
+        );
+      }
+      const review = batch.results
+        .filter((r): r is AiTagResult & { ok: true } => r.ok && !r.applied)
+        .map(r => ({
+          asset: itemById[r.asset_id],
+          tags: r.tags,
+        }))
+        .filter(it => Boolean(it.asset) && it.tags.length > 0);
+      if (review.length) {
+        setAiReviewItems(review);
+      }
+    } catch (err) {
+      if (err instanceof UnauthorizedError && unauthorised()) return;
+      handleApiError(err, "AI tag generation failed.");
+    } finally {
+      setAiBatchBusy(false);
+    }
+  };
+
+  /** Merge reviewed tags into the affected assets. */
+  const applyAiTags = async (items: AiTagReviewItem[]) => {
+    setAiApplying(true);
+    const failed: string[] = [];
+    let aborted = false;
+    for (const it of items) {
+      if (!it.tags.length) continue;
+      try {
+        await setTags(it.asset.id, [
+          ...new Set([...(itemById[it.asset.id]?.tags || []), ...it.tags]),
+        ]);
+      } catch (err) {
+        if (err instanceof UnauthorizedError) {
+          onUnauthorized?.();
+          aborted = true;
+          break;
+        }
+        console.error(err);
+        failed.push(it.asset.title || it.asset.filename);
+      }
+    }
+    setAiReviewItems(null);
+    setAiApplying(false);
+    if (!aborted) {
+      await refresh();
+      setSelectedIds(new Set());
+    }
+    if (failed.length) {
+      alert(`Failed to apply AI tags for: ${failed.join(", ")}`);
+    }
+  };
+
+  /** Backfill embedded .3MF metadata. Runs globally (the endpoint scans all
+   *  3MF assets without a title and skips non-3MF files). */
+  const runBackfill = async () => {
+    if (backfillBusy) return;
+    if (selectedIds.size === 0 && !confirm(
+      "No items selected. Backfill 3MF metadata for ALL assets without a title? This scans the whole library."
+    )) {
+      return;
+    }
+    setBackfillBusy(true);
+    try {
+      const summary = await backfill3mfMetadata();
+      await refresh();
+      setSelectedIds(new Set());
+      alert(
+        `3MF metadata backfill finished: ${summary.done} filled, ` +
+        `${summary.skipped} already tagged, ${summary.not_3mf} non-3MF, ${summary.failed} failed.`
+      );
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        onUnauthorized?.();
+      } else {
+        handleApiError(err, "3MF metadata backfill failed.");
+      }
+    } finally {
+      setBackfillBusy(false);
+    }
   };
 
   const showDropOverlay = dragActive || dropUploading;
@@ -707,6 +861,26 @@ export default function AssetGrid({
           >
             <Download className="w-4 h-4" />
             {bulkDownloading === "selected" ? "Preparing…" : "Download selected"}
+          </button>
+          <button
+            className="flex items-center gap-1.5 h-8 px-3 rounded-md border border-panel-strong text-sm font-medium transition-smooth hover:bg-panel disabled:opacity-60"
+            onClick={() => {
+              const first = sortedItems.find(it => selectedIds.has(it.id));
+              if (first) void generateAiTags(first);
+            }}
+            disabled={aiBatchBusy}
+            title="Generate tags with AI for the selected items"
+          >
+            <Sparkles className="w-4 h-4" />
+            {aiBatchBusy ? "Tagging…" : "AI tags"}
+          </button>
+          <button
+            className="flex items-center gap-1.5 h-8 px-3 rounded-md border border-panel-strong text-sm font-medium transition-smooth hover:bg-panel disabled:opacity-60"
+            onClick={() => void runBackfill()}
+            disabled={backfillBusy}
+            title="Extract embedded metadata (title/notes/thumbnail) from .3MF files"
+          >
+            {backfillBusy ? "Extracting…" : "Fill 3MF metadata"}
           </button>
           <div className="relative">
             <button
@@ -810,6 +984,7 @@ export default function AssetGrid({
                             onSaveTags={onSaveTags}
                             onSaveNotes={onSaveNotes}
                             onSaveTitle={onSaveTitle}
+                            onSaveSourceUrl={onSaveSourceUrl}
                             onRename={onRename}
                             onPreview={setPreviewItem}
                             onDownloadSingle={downloadAsset}
@@ -822,6 +997,8 @@ export default function AssetGrid({
                             selected={selectedIds.has(it.id)}
                             onToggleSelected={() => toggleSelected(it.id)}
                             bulkDownloading={Boolean(bulkDownloading)}
+                            onGenerateAiTags={generateAiTags}
+                            aiBusy={aiBusyIds.has(it.id) || aiBatchBusy}
                             theme={theme}
                           />
                         </div>
@@ -845,6 +1022,7 @@ export default function AssetGrid({
               onSaveTags={onSaveTags}
               onSaveNotes={onSaveNotes}
               onSaveTitle={onSaveTitle}
+              onSaveSourceUrl={onSaveSourceUrl}
               onRename={onRename}
               onPreview={setPreviewItem}
               onDownloadSingle={downloadAsset}
@@ -857,6 +1035,8 @@ export default function AssetGrid({
               selected={selectedIds.has(it.id)}
               onToggleSelected={() => toggleSelected(it.id)}
               bulkDownloading={Boolean(bulkDownloading)}
+              onGenerateAiTags={generateAiTags}
+              aiBusy={aiBusyIds.has(it.id) || aiBatchBusy}
               theme={theme}
             />
           ))}
@@ -876,6 +1056,13 @@ export default function AssetGrid({
       {previewItem && (
         <AssetPreviewModal asset={previewItem} theme={theme} onClose={() => setPreviewItem(null)} />
       )}
+      <AiTagReviewModal
+        items={aiReviewItems || []}
+        open={Boolean(aiReviewItems)}
+        busy={aiApplying}
+        onClose={() => setAiReviewItems(null)}
+        onApply={applyAiTags}
+      />
       {showDeleteDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => !bulkDeleting && setShowDeleteDialog(false)}>
           <div

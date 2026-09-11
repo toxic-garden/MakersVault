@@ -32,6 +32,16 @@ def ensure_asset_source_path_column() -> None:
       conn.exec_driver_sql("ALTER TABLE asset ADD COLUMN source_path TEXT")
 
 
+def ensure_asset_source_url_column() -> None:
+  """Lightweight migration for the asset object-source URL field."""
+  with engine.connect() as conn:
+    cols = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(asset);").fetchall()]
+    if not cols:
+      return
+    if "source_url" not in cols:
+      conn.exec_driver_sql("ALTER TABLE asset ADD COLUMN source_url TEXT")
+
+
 def ensure_asset_indexes() -> None:
   """Create indexes that keep large asset libraries responsive."""
   with engine.connect() as conn:

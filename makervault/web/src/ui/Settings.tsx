@@ -1,6 +1,15 @@
 import React from "react";
 import { AppSettings, THEME_OPTIONS, ThemeId } from "../lib/settings";
-import { UnauthorizedError, createFolder, getMountImportSettings, updateMountImportSettings } from "../lib/api";
+import {
+  UnauthorizedError,
+  createFolder,
+  getAiSettings,
+  getMountImportSettings,
+  testAiConnection,
+  updateAiSettings,
+  updateMountImportSettings,
+  type AiSettings,
+} from "../lib/api";
 import { entriesFromFileList, uploadEntriesToFolder, type UploadEntry } from "../lib/uploadTree";
 
 type Props = {
@@ -12,7 +21,7 @@ type Props = {
   onSelectFolder?: (id: string | null) => void;
 };
 
-type Section = "root" | "theme" | "network" | "imports";
+type Section = "root" | "theme" | "network" | "imports" | "ai";
 
 const THEME_SWATCHES: Record<ThemeId, string> = {
   system: "linear-gradient(135deg, #f8fafc 0%, #f8fafc 50%, #0b0f19 50%, #0b0f19 100%)",
@@ -137,6 +146,15 @@ export default function Settings({
   const [scanFolderId, setScanFolderId] = React.useState<string | null>(null);
   const folderInputRef = React.useRef<HTMLInputElement | null>(null);
   const uploadedKeysRef = React.useRef<Set<string>>(new Set());
+  const [aiConfig, setAiConfig] = React.useState<AiSettings | null>(null);
+  const [aiEndpointDraft, setAiEndpointDraft] = React.useState("");
+  const [aiApiKeyDraft, setAiApiKeyDraft] = React.useState("");
+  const [aiModelDraft, setAiModelDraft] = React.useState("");
+  const [aiMaxTagsDraft, setAiMaxTagsDraft] = React.useState("10");
+  const [aiSaving, setAiSaving] = React.useState(false);
+  const [aiLoading, setAiLoading] = React.useState(false);
+  const [aiTestStatus, setAiTestStatus] = React.useState<{ ok: boolean; message: string } | null>(null);
+  const [aiInitial, setAiInitial] = React.useState<{ endpoint: string; model: string; maxTags: string; jsonMode: boolean; reviewMode: boolean; autoTag: boolean } | null>(null);
 
   const recordUploadedEntries = (entries: UploadEntry[]) => {
     for (const entry of entries) {
@@ -280,6 +298,85 @@ export default function Settings({
     });
   };
 
+  const applyAiConfig = (data: AiSettings) => {
+    setAiConfig(data);
+    setAiEndpointDraft(data.endpoint || "");
+    setAiModelDraft(data.model || "");
+    setAiMaxTagsDraft(String(data.max_tags || 10));
+    setAiApiKeyDraft("");
+    setAiInitial({
+      endpoint: data.endpoint || "",
+      model: data.model || "",
+      maxTags: String(data.max_tags || 10),
+      jsonMode: Boolean(data.json_mode),
+      reviewMode: Boolean(data.review_mode),
+      autoTag: Boolean(data.auto_tag),
+    });
+  };
+
+  const saveAiSettings = async (
+    overrides?: Partial<{ jsonMode: boolean; reviewMode: boolean; autoTag: boolean }>
+  ) => {
+    if (!aiConfig) return;
+    setAiSaving(true);
+    try {
+      const merged = {
+        endpoint: aiEndpointDraft.trim(),
+        model: aiModelDraft.trim(),
+        max_tags: Math.max(1, Math.min(50, parseInt(aiMaxTagsDraft, 10) || 10)),
+        json_mode: overrides?.jsonMode ?? aiConfig.json_mode,
+        review_mode: overrides?.reviewMode ?? aiConfig.review_mode,
+        auto_tag: overrides?.autoTag ?? aiConfig.auto_tag,
+        api_key: aiApiKeyDraft.trim() ? aiApiKeyDraft.trim() : null,
+      };
+      const data = await updateAiSettings({
+        endpoint: merged.endpoint,
+        api_key: merged.api_key ?? undefined,
+        model: merged.model,
+        max_tags: merged.max_tags,
+        json_mode: merged.json_mode,
+        review_mode: merged.review_mode,
+        auto_tag: merged.auto_tag,
+      });
+      applyAiConfig(data);
+      setAiTestStatus(null);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        onUnauthorized?.();
+      } else {
+        console.error(err);
+        setAiTestStatus({ ok: false, message: "Saving AI settings failed." });
+      }
+    } finally {
+      setAiSaving(false);
+    }
+  };
+
+  const runAiTest = async () => {
+    setAiTestStatus({ ok: true, message: "Testing…" });
+    try {
+      const result = await testAiConnection();
+      setAiTestStatus(
+        result.ok
+          ? { ok: true, message: "Connection OK." }
+          : { ok: false, message: result.error || "Connection failed." }
+      );
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        onUnauthorized?.();
+        return;
+      }
+      setAiTestStatus({ ok: false, message: "Connection test failed." });
+    }
+  };
+
+  const toggleAiFlag = async (flag: "json_mode" | "review_mode" | "auto_tag") => {
+    if (!aiConfig) return;
+    const next = !aiConfig[flag];
+    setAiConfig({ ...aiConfig, [flag]: next });
+    await saveAiSettings({ [flag]: next });
+  };
+
   React.useEffect(() => {
     if (section !== "imports") return;
     setMakerworldDraft(settings.makerworld.cookie || "");
@@ -321,6 +418,30 @@ export default function Settings({
   }, [section, settings.network.publicUrl]);
 
   React.useEffect(() => {
+    if (section !== "ai") return;
+    let active = true;
+    setAiLoading(true);
+    void (async () => {
+      try {
+        const data = await getAiSettings();
+        if (!active) return;
+        applyAiConfig(data);
+      } catch (err) {
+        if (err instanceof UnauthorizedError) {
+          onUnauthorized?.();
+        } else {
+          console.error(err);
+        }
+      } finally {
+        if (active) setAiLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [section, onUnauthorized]);
+
+  React.useEffect(() => {
     if (!makerworldEditing) {
       setMakerworldDraft(settings.makerworld.cookie || "");
     }
@@ -350,6 +471,173 @@ export default function Settings({
     setScanEntries(entries);
     setScanSkipped(skipped);
   }, [scanRawEntries, scanRoot]);
+
+  if (section === "ai") {
+    const aiDirty =
+      Boolean(aiInitial) &&
+      Boolean(aiConfig) &&
+      (aiEndpointDraft.trim() !== aiInitial!.endpoint ||
+        aiModelDraft.trim() !== aiInitial!.model ||
+        aiMaxTagsDraft.trim() !== aiInitial!.maxTags ||
+        aiApiKeyDraft.trim() !== "");
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">AI Tagging</h2>
+            <p className="text-sm opacity-70">
+              Automatic tags via any OpenAI-compatible vision endpoint.
+            </p>
+          </div>
+          <button
+            className="text-sm px-3 py-2 rounded-md border border-panel-strong"
+            onClick={() => setSection("root")}
+          >
+            Back
+          </button>
+        </div>
+
+        {aiLoading || !aiConfig ? (
+          <div className="rounded-lg border border-panel bg-panel-soft p-4 text-sm opacity-70">
+            Loading AI settings...
+          </div>
+        ) : (
+          <>
+            <div className="rounded-lg border border-panel bg-panel-soft p-4 flex flex-col gap-3">
+              <div>
+                <div className="text-lg font-semibold">Endpoint</div>
+                <p className="text-sm opacity-70">
+                  Base URL of an OpenAI-compatible API (e.g. http://gaming.toxicgarden.de:11434/v1).
+                  The path /chat/completions is appended automatically.
+                </p>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs uppercase tracking-wide text-muted">API base URL</label>
+                <input
+                  type="text"
+                  value={aiEndpointDraft}
+                  onChange={e => setAiEndpointDraft(e.target.value)}
+                  placeholder="http://localhost:11434/v1"
+                  className="px-3 py-2 rounded-md border border-panel-strong bg-panel-soft text-sm"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs uppercase tracking-wide text-muted">
+                  API key {aiConfig.api_key_set ? "(stored — leave blank to keep)" : "(optional)"}
+                </label>
+                <input
+                  type="password"
+                  value={aiApiKeyDraft}
+                  onChange={e => setAiApiKeyDraft(e.target.value)}
+                  placeholder={aiConfig.api_key_set ? "••••••••" : "sk-…"}
+                  className="px-3 py-2 rounded-md border border-panel-strong bg-panel-soft text-sm"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs uppercase tracking-wide text-muted">
+                  Vision model (required, multimodal)
+                </label>
+                <input
+                  type="text"
+                  value={aiModelDraft}
+                  onChange={e => setAiModelDraft(e.target.value)}
+                  placeholder="llava, qwen2.5-vl, gpt-4o-mini, gemma3…"
+                  className="px-3 py-2 rounded-md border border-panel-strong bg-panel-soft text-sm"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs uppercase tracking-wide text-muted">Max tags per file</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={aiMaxTagsDraft}
+                  onChange={e => setAiMaxTagsDraft(e.target.value)}
+                  className="px-3 py-2 rounded-md border border-panel-strong bg-panel-soft text-sm w-24"
+                />
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  className="text-xs px-2 py-1 rounded-md border border-panel-strong disabled:opacity-60"
+                  disabled={!aiDirty || aiSaving}
+                  onClick={() => void saveAiSettings()}
+                >
+                  {aiSaving ? "Saving..." : "Save"}
+                </button>
+                <button
+                  className="text-xs px-2 py-1 rounded-md border border-panel-strong disabled:opacity-60"
+                  disabled={aiSaving}
+                  onClick={() => void runAiTest()}
+                >
+                  Test connection
+                </button>
+                {aiTestStatus && (
+                  <span className={`text-xs font-medium ${aiTestStatus.ok ? "text-green-500" : "text-red-500"}`}>
+                    {aiTestStatus.message}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-panel bg-panel-soft p-4 flex flex-col gap-3">
+              <div>
+                <div className="text-lg font-semibold">Behavior</div>
+                <p className="text-sm opacity-70">
+                  How generated tags are handled. Toggling saves immediately.
+                </p>
+              </div>
+              <label className="flex items-start gap-2.5 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={aiConfig.review_mode}
+                  onChange={() => void toggleAiFlag("review_mode")}
+                  disabled={aiSaving}
+                  className="mt-0.5 w-4 h-4 accent-[color:var(--mv-accent)]"
+                />
+                <span>
+                  <span className="font-medium">Review before applying (recommended)</span>
+                  <span className="block text-xs text-muted mt-0.5">
+                    Show a dialog where tags can be deselected before they are written.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2.5 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={aiConfig.json_mode}
+                  onChange={() => void toggleAiFlag("json_mode")}
+                  disabled={aiSaving}
+                  className="mt-0.5 w-4 h-4 accent-[color:var(--mv-accent)]"
+                />
+                <span>
+                  <span className="font-medium">Structured JSON responses</span>
+                  <span className="block text-xs text-muted mt-0.5">
+                    Disable for endpoints that reject response_format (falls back to plain text).
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2.5 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={aiConfig.auto_tag}
+                  onChange={() => void toggleAiFlag("auto_tag")}
+                  disabled={aiSaving}
+                  className="mt-0.5 w-4 h-4 accent-[color:var(--mv-accent)]"
+                />
+                <span>
+                  <span className="font-medium">Auto-tag new uploads</span>
+                  <span className="block text-xs text-muted mt-0.5">
+                    Tags are generated in the background for uploads without tags. Only fires when a
+                    thumbnail exists; failures are silent.
+                  </span>
+                </span>
+              </label>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
 
   if (section === "theme") {
     return (
@@ -829,6 +1117,14 @@ export default function Settings({
           <div className="text-xs uppercase tracking-wide text-muted">Imports</div>
           <div className="text-lg font-semibold">Imports & Folder Scan</div>
           <div className="text-sm opacity-70">Manage import cookies and scan local folders.</div>
+        </button>
+        <button
+          className="text-left rounded-lg border border-panel bg-panel-soft p-4 hover:shadow"
+          onClick={() => setSection("ai")}
+        >
+          <div className="text-xs uppercase tracking-wide text-muted">AI Tagging</div>
+          <div className="text-lg font-semibold">AI Tagging</div>
+          <div className="text-sm opacity-70">Automatic tags via an OpenAI-compatible endpoint.</div>
         </button>
       </div>
     </div>
