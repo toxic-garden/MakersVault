@@ -68,6 +68,13 @@ Thumbs.db
 # ---------- Build outputs ----------
 # Vite production build (regenerated on `npm run build`)
 web/dist/
+makervault/web/dist/
+
+# ---------- Runtime data ----------
+# SQLite dev DBs and storage live under the api dir; never commit them.
+makervault/api/app.db
+api/app.db
+app.db
 
 # ---------- Old project artifacts ----------
 # Removed in the post-slicing cleanup; kept here so any leftover
