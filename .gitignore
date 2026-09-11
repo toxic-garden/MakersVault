@@ -1,6 +1,7 @@
 makervault/.roo/*
 makervault/api/__pycache__
 makervault/web/node_modules
+makervault/docs/plans/
 data/*
 api/storage/*
 api/data/*
