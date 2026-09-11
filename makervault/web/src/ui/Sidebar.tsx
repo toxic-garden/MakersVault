@@ -436,18 +436,18 @@ export default function Sidebar({
 
   return (
     <aside
-      className="w-56 border-r border-panel p-2.5 flex flex-col gap-2.5"
+      className="w-56 border-r border-panel p-2.5 flex flex-col gap-2.5 h-screen sticky top-0 overflow-y-auto"
     onDragOver={handleSidebarDragOver}
     onDragLeave={handleSidebarDragLeave}
     onDrop={handleSidebarDrop}
   >
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between shrink-0">
       <div className="text-xs text-muted font-medium">Folders</div>
       <button className="h-7 px-2 text-xs rounded-md border border-panel-strong transition-smooth hover:bg-panel-soft" onClick={() => startCreate(null)}>New</button>
     </div>
 
     <button
-      className={`flex items-center gap-2 px-2 py-1.5 rounded-md border border-transparent text-sm transition-smooth ${
+      className={`flex items-center gap-2 px-2 py-1.5 rounded-md border border-transparent text-sm transition-smooth shrink-0 ${
         !selectedId ? "bg-accent-soft" : "hover:bg-panel-soft"
       } ${dropTargetId === DROP_ALL_ID ? "border-accent ring-2 ring-[color:var(--mv-accent)] ring-offset-1 ring-offset-[color:var(--mv-panel-strong)]" : ""}`}
       onClick={() => onSelect(null)}
@@ -457,13 +457,13 @@ export default function Sidebar({
       <span>All Items</span>
     </button>
 
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col gap-0.5 flex-1 min-h-0 overflow-y-auto">
       {(childrenMap["__root"] || []).map(f => renderFolderNode(f, 0))}
       {folders.length === 0 && <div className="text-xs text-muted px-2">No folders yet</div>}
     </div>
 
       {creating && (
-        <div className="mt-1 flex flex-col gap-1.5">
+        <div className="mt-1 flex flex-col gap-1.5 shrink-0">
           <input
             value={newName}
             onChange={e=>setNewName(e.target.value)}
@@ -488,7 +488,7 @@ export default function Sidebar({
       )}
 
       {editing && (
-        <div className="mt-1 flex flex-col gap-1.5">
+        <div className="mt-1 flex flex-col gap-1.5 shrink-0">
           <input
             value={editName}
             onChange={e=>setEditName(e.target.value)}
@@ -514,7 +514,7 @@ export default function Sidebar({
         </div>
       )}
 
-      <div className="mt-auto pt-2 border-t border-panel">
+      <div className="mt-auto pt-2 border-t border-panel shrink-0">
         <button
           type="button"
           onClick={onOpenSettings}
