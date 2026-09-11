@@ -557,7 +557,8 @@ def _mount_rescan_worker(job_id: str) -> None:
         failed=summary.get("failed", 0),
         status="done",
         finished_at=time.time(),
-        message=(f"Imported {summary.get('imported', 0)}, pruned {summary.get('pruned', 0)}, "
+        message=(f"Imported {summary.get('imported', 0)}, pruned {summary.get('pruned', 0)} files "
+                 f"and {summary.get('pruned_folders', 0)} folders, "
                  f"unchanged {summary.get('skipped', 0)}, failed {summary.get('failed', 0)}."),
     )
     _prune_jobs()

@@ -20,12 +20,11 @@ from config import (
     IMPORT_MAX_BYTES,
     MOUNT_IMPORT_EXTS_RAW,
     MOUNT_IMPORT_INCLUDE_HIDDEN,
-    MOUNT_IMPORT_PATH,
     MOUNT_IMPORT_COPY,
 )
 from db import STORAGE, engine
 from file_utils import guess_mime_from_path, sanitize_filename
-from models import Asset
+from models import Asset, Folder
 from settings_service import get_mount_import_copy
 from zip_service import resolve_zip_folder_id
 
@@ -57,8 +56,14 @@ def scan_mount_imports(prune_missing: bool = False) -> Dict[str, Any]:
     disappeared are removed from the library (DB row + files). Pruning is
     skipped entirely when the mount looks unavailable (missing/unreadable),
     so a transient network-filesystem hiccup cannot wipe the library.
+
+    Note: the mount path is read via the config module at RUNTIME (not from a
+    module-level binding) so tests can point it at a temp dir by patching
+    `config.MOUNT_IMPORT_PATH`.
     """
-    root_raw = MOUNT_IMPORT_PATH
+    import config as _config
+
+    root_raw = _config.MOUNT_IMPORT_PATH
     if not root_raw:
         return {"imported": 0, "skipped": 0, "failed": 0, "pruned": 0, "reason": "not_configured"}
     root = Path(root_raw)
@@ -167,6 +172,10 @@ def scan_mount_imports(prune_missing: bool = False) -> Dict[str, Any]:
                     select(Asset).where(Asset.source_path.like(f"{root_prefix}/%"))
                 ).all()
             )
+            # Collect the mount's folder chains BEFORE pruning — once the
+            # assets are gone we can no longer tell which folders the mount
+            # created (user folders must not be touched afterwards).
+            mount_folder_ids = _collect_mount_folder_ids(session, prunable)
             for asset in prunable:
                 source = Path(asset.source_path or "")
                 if asset.source_path in seen_paths:
@@ -178,5 +187,83 @@ def scan_mount_imports(prune_missing: bool = False) -> Dict[str, Any]:
                 cleanup_asset(asset.id)
                 pruned += 1
 
-    print(f"[mount-import] Done. Imported {imported}, skipped {skipped}, failed {failed}, pruned {pruned}.")
-    return {"imported": imported, "skipped": skipped, "failed": failed, "pruned": pruned}
+            pruned_folders = _prune_empty_folders(session, mount_folder_ids)
+        else:
+            pruned_folders = 0
+
+    print(f"[mount-import] Done. Imported {imported}, skipped {skipped}, failed {failed}, "
+          f"pruned {pruned} assets, {pruned_folders} folders.")
+    return {
+        "imported": imported,
+        "skipped": skipped,
+        "failed": failed,
+        "pruned": pruned,
+        "pruned_folders": pruned_folders,
+    }
+
+
+def _collect_mount_folder_ids(session: Session, mount_assets) -> set:
+    """All folder ids on the ancestor chains of the given mount assets' folders.
+
+    Must be called BEFORE asset pruning — afterwards the chain can no longer be
+    reconstructed.
+    """
+    folders: dict = {f.id: f for f in session.exec(select(Folder)).all()}
+    ids: set = set()
+    for asset in mount_assets:
+        current = folders.get(asset.folder_id) if asset.folder_id else None
+        guard: set = set()
+        while current and current.id not in guard:
+            guard.add(current.id)
+            ids.add(current.id)
+            current = folders.get(current.parent_id) if current.parent_id else None
+    return ids
+
+
+def _prune_empty_folders(session: Session, mount_folder_ids: set) -> int:
+    """Delete empty folders from the given set — children before parents.
+
+    A folder is removed only when it has no assets, no remaining child folders,
+    and is part of the mount subtree. Folders created by the user elsewhere in
+    the tree are never touched.
+    """
+    if not mount_folder_ids:
+        return 0
+    folders: dict = {f.id: f for f in session.exec(select(Folder)).all()}
+    occupied = {a.folder_id for a in session.exec(select(Asset)).all() if a.folder_id}
+
+    removed = 0
+    changed = True
+    while changed:
+        changed = False
+        for fid in sorted(mount_folder_ids, key=lambda i: _chain_depth(i, folders), reverse=True):
+            if fid not in folders or fid in occupied:
+                continue
+            has_child_folder = any(f.parent_id == fid for f in folders.values())
+            if has_child_folder or not _has_no_assets(session, fid):
+                continue
+            session.delete(folders.pop(fid))
+            occupied.discard(fid)
+            removed += 1
+            changed = True
+    session.commit()
+    return removed
+
+
+def _chain_depth(folder_id: str, folders: dict) -> int:
+    depth = 0
+    current = folders.get(folder_id)
+    guard: set = set()
+    while current and current.parent_id and current.parent_id not in guard:
+        guard.add(current.parent_id)
+        current = folders.get(current.parent_id)
+        if not current:
+            break
+        depth += 1
+    return depth
+
+
+def _has_no_assets(session: Session, folder_id: str) -> bool:
+    return session.exec(
+        select(Asset).where(Asset.folder_id == folder_id)
+    ).first() is None
