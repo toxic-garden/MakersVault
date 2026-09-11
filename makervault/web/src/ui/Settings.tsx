@@ -3,6 +3,7 @@ import { AppSettings, THEME_OPTIONS, ThemeId } from "../lib/settings";
 import {
   UnauthorizedError,
   createFolder,
+  generateMissingThumbnails,
   getAiSettings,
   getMountImportSettings,
   testAiConnection,
@@ -146,6 +147,8 @@ export default function Settings({
   const [scanFolderId, setScanFolderId] = React.useState<string | null>(null);
   const folderInputRef = React.useRef<HTMLInputElement | null>(null);
   const uploadedKeysRef = React.useRef<Set<string>>(new Set());
+  const [thumbBackfillBusy, setThumbBackfillBusy] = React.useState(false);
+  const [thumbBackfillResult, setThumbBackfillResult] = React.useState<string | null>(null);
   const [aiConfig, setAiConfig] = React.useState<AiSettings | null>(null);
   const [aiEndpointDraft, setAiEndpointDraft] = React.useState("");
   const [aiApiKeyDraft, setAiApiKeyDraft] = React.useState("");
@@ -288,6 +291,27 @@ export default function Settings({
       setMountSaving(false);
     }
   };
+  const runThumbnailBackfill = async () => {
+    setThumbBackfillBusy(true);
+    setThumbBackfillResult(null);
+    try {
+      const r = await generateMissingThumbnails();
+      setThumbBackfillResult(
+        `${r.generated} generated, ${r.skipped} already had one, ${r.failed} failed`
+      );
+      onAssetsChanged?.();
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        onUnauthorized?.();
+      } else {
+        setThumbBackfillResult("Backfill failed. Check the server log.");
+        console.error(err);
+      }
+    } finally {
+      setThumbBackfillBusy(false);
+    }
+  };
+
   const updateNetwork = (patch: Partial<AppSettings["network"]>) => {
     onChange({
       ...settings,
@@ -837,6 +861,19 @@ export default function Settings({
               {mountSaving ? "Saving..." : "Save"}
             </button>
             {mountLoading && <span className="text-xs opacity-70">Loading settings...</span>}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap pt-1">
+            <button
+              className="text-xs px-2 py-1 rounded-md border border-panel-strong disabled:opacity-60"
+              disabled={thumbBackfillBusy}
+              onClick={() => void runThumbnailBackfill()}
+              title="Generate thumbnails for all mounted 3D files that don't have one yet"
+            >
+              {thumbBackfillBusy ? "Generating…" : "Generate missing thumbnails"}
+            </button>
+            {thumbBackfillResult && (
+              <span className="text-xs font-medium text-muted">{thumbBackfillResult}</span>
+            )}
           </div>
         </div>
 

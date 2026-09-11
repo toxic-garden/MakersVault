@@ -643,3 +643,18 @@ export async function backfill3mfMetadata(assetId?: string): Promise<BackfillSum
   assertOk(res, "3MF metadata backfill failed");
   return res.json();
 }
+
+export type ThumbnailBackfillSummary = {
+  generated: number;
+  skipped: number;
+  failed: number;
+};
+
+export async function generateMissingThumbnails(): Promise<ThumbnailBackfillSummary> {
+  const res = await fetch(`${apiBase()}/admin/generate-missing-thumbnails`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  assertOk(res, "Thumbnail backfill failed");
+  return res.json();
+}
