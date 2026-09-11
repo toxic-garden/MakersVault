@@ -526,6 +526,43 @@ def generate_missing_thumbnails(_: AuthDep = None):
     return {"job_id": job.get("id")}
 
 
+@app.post("/admin/rescan-mount")
+def rescan_mount(_: AuthDep = None):
+    """Re-scan the mount import directory in the background.
+
+    Indexes new files and, with prune=true, removes mount-imported assets
+    whose source file no longer exists on disk. Returns the job id; poll
+    GET /admin/jobs/{job_id} for progress.
+    """
+    job = start_job(_mount_rescan_worker) or {}
+    return {"job_id": job.get("id")}
+
+
+def _mount_rescan_worker(job_id: str) -> None:
+    """Worker: run scan_mount_imports with pruning and report the summary."""
+    update_job(job_id, message="Scanning mount...")
+    try:
+        summary = scan_mount_imports(prune_missing=True)
+    except Exception as exc:
+        update_job(job_id, status="error", error=str(exc),
+                   message=f"Rescan failed: {exc}", finished_at=time.time())
+        _prune_jobs()
+        return
+    update_job(
+        job_id,
+        total=summary.get("imported", 0) + summary.get("skipped", 0) + summary.get("pruned", 0),
+        processed=summary.get("imported", 0) + summary.get("skipped", 0) + summary.get("pruned", 0),
+        generated=summary.get("imported", 0),
+        skipped=summary.get("skipped", 0),
+        failed=summary.get("failed", 0),
+        status="done",
+        finished_at=time.time(),
+        message=(f"Imported {summary.get('imported', 0)}, pruned {summary.get('pruned', 0)}, "
+                 f"unchanged {summary.get('skipped', 0)}, failed {summary.get('failed', 0)}."),
+    )
+    _prune_jobs()
+
+
 def _thumbnail_backfill_worker(job_id: str) -> None:
     """Worker: render a thumbnail for every STL/OBJ/3MF asset without one."""
     eligible: list = []

@@ -7,6 +7,7 @@ import {
   getAdminJob,
   getAiSettings,
   getMountImportSettings,
+  rescanMount,
   testAiConnection,
   updateAiSettings,
   updateMountImportSettings,
@@ -151,6 +152,8 @@ export default function Settings({
   const uploadedKeysRef = React.useRef<Set<string>>(new Set());
   const [thumbBackfillBusy, setThumbBackfillBusy] = React.useState(false);
   const [thumbJob, setThumbJob] = React.useState<AdminJobStatus | null>(null);
+  const [rescanBusy, setRescanBusy] = React.useState(false);
+  const [rescanJob, setRescanJob] = React.useState<AdminJobStatus | null>(null);
   const [aiConfig, setAiConfig] = React.useState<AiSettings | null>(null);
   const [aiEndpointDraft, setAiEndpointDraft] = React.useState("");
   const [aiApiKeyDraft, setAiApiKeyDraft] = React.useState("");
@@ -293,21 +296,25 @@ export default function Settings({
       setMountSaving(false);
     }
   };
+  /** Poll an admin job until it finishes; onStatus receives every update. */
+  const pollAdminJob = async (jobId: string, onStatus: (s: AdminJobStatus) => void) => {
+    let latest: AdminJobStatus | null = null;
+    for (let i = 0; i < 7200; i++) {
+      const status = await getAdminJob(jobId);
+      latest = status;
+      onStatus(status);
+      if (status.status === "done" || status.status === "error") break;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    return latest;
+  };
+
   const runThumbnailBackfill = async () => {
     setThumbBackfillBusy(true);
     setThumbJob(null);
     try {
       const started = await generateMissingThumbnails();
-      const jobId = started.job_id;
-      // Poll until the job finishes.
-      let latest: AdminJobStatus | null = null;
-      for (let i = 0; i < 7200; i++) {
-        const status = await getAdminJob(jobId);
-        latest = status;
-        setThumbJob(status);
-        if (status.status === "done" || status.status === "error") break;
-        await new Promise(r => setTimeout(r, 1000));
-      }
+      const latest = await pollAdminJob(started.job_id, setThumbJob);
       // Job is done; refresh the asset grid so new thumbnails appear.
       onAssetsChanged?.();
       if (latest && latest.status === "error") {
@@ -322,6 +329,29 @@ export default function Settings({
       }
     } finally {
       setThumbBackfillBusy(false);
+    }
+  };
+
+  const runMountRescan = async () => {
+    setRescanBusy(true);
+    setRescanJob(null);
+    try {
+      const started = await rescanMount();
+      const latest = await pollAdminJob(started.job_id, setRescanJob);
+      onAssetsChanged?.();
+      onFoldersChanged?.();
+      if (latest && latest.status === "error") {
+        setRescanJob({ ...latest, message: latest.error || "Rescan failed" });
+      }
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        onUnauthorized?.();
+      } else {
+        setRescanJob({ id: "local", status: "error", total: 0, processed: 0, generated: 0, skipped: 0, failed: 0, message: "Rescan failed to start." });
+        console.error(err);
+      }
+    } finally {
+      setRescanBusy(false);
     }
   };
 
@@ -884,35 +914,18 @@ export default function Settings({
             >
               {thumbBackfillBusy ? "Generating…" : "Generate missing thumbnails"}
             </button>
-            {thumbJob && (
-              <div className="flex-1 min-w-[200px] flex flex-col gap-1">
-                {thumbJob.status === "done" ? (
-                  <span className="text-xs font-medium text-muted">
-                    Done — {thumbJob.generated} generated, {thumbJob.skipped} already had one, {thumbJob.failed} failed
-                  </span>
-                ) : thumbJob.status === "error" ? (
-                  <span className="text-xs font-medium text-red-500">
-                    {thumbJob.message || "Backfill failed"}
-                  </span>
-                ) : (
-                  <>
-                    <span className="text-xs font-medium text-muted">
-                      {thumbJob.processed}/{thumbJob.total} rendered · {thumbJob.generated} ok · {thumbJob.failed} failed
-                    </span>
-                    <div className="h-1.5 w-full rounded-full bg-panel-strong overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-accent transition-all"
-                        style={{
-                          width: thumbJob.total > 0
-                            ? `${Math.min(100, Math.round((thumbJob.processed / thumbJob.total) * 100))}%`
-                            : "0%",
-                        }}
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
+            {thumbJob && <JobStatusView job={thumbJob} />}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap pt-1">
+            <button
+              className="text-xs px-2 py-1 rounded-md border border-panel-strong disabled:opacity-60"
+              disabled={rescanBusy}
+              onClick={() => void runMountRescan()}
+              title="Re-index the mounted library: add new files, remove assets whose source file was deleted"
+            >
+              {rescanBusy ? "Rescanning…" : "Rescan library"}
+            </button>
+            {rescanJob && <JobStatusView job={rescanJob} />}
           </div>
         </div>
 
@@ -1202,6 +1215,32 @@ export default function Settings({
           <div className="text-lg font-semibold">AI Tagging</div>
           <div className="text-sm opacity-70">Automatic tags via an OpenAI-compatible endpoint.</div>
         </button>
+      </div>
+    </div>
+  );
+}
+
+/** Shared progress/status display for admin background jobs. */
+function JobStatusView({ job }: { job: AdminJobStatus | null }) {
+  if (!job) return null;
+  if (job.status === "done") {
+    return (
+      <span className="text-xs font-medium text-muted">
+        {job.message || `Done — ${job.generated} ok, ${job.failed} failed`}
+      </span>
+    );
+  }
+  if (job.status === "error") {
+    return <span className="text-xs font-medium text-red-500">{job.message || "Job failed"}</span>;
+  }
+  const pct = job.total > 0 ? Math.min(100, Math.round((job.processed / job.total) * 100)) : 0;
+  return (
+    <div className="flex-1 min-w-[200px] flex flex-col gap-1">
+      <span className="text-xs font-medium text-muted">
+        {job.message || `${job.processed}/${job.total} processed · ${job.generated} ok · ${job.failed} failed`}
+      </span>
+      <div className="h-1.5 w-full rounded-full bg-panel-strong overflow-hidden">
+        <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${pct}%` }} />
       </div>
     </div>
   );

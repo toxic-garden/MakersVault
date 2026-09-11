@@ -672,6 +672,15 @@ export async function generateMissingThumbnails(): Promise<ThumbnailBackfillStar
   return res.json();
 }
 
+export async function rescanMount(): Promise<{ job_id: string }> {
+  const res = await fetch(`${apiBase()}/admin/rescan-mount`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  assertOk(res, "Mount rescan failed to start");
+  return res.json();
+}
+
 export async function getAdminJob(jobId: string): Promise<AdminJobStatus> {
   const res = await fetch(`${apiBase()}/admin/jobs/${encodeURIComponent(jobId)}`, {
     headers: authHeaders(),

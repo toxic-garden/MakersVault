@@ -2,11 +2,18 @@ import os
 import re
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from sqlmodel import Session, select
 
-from asset_service import asset_path, cleanup_asset, create_asset_record, finalize_asset_record, save_thumb, apply_3mf_metadata
+from asset_service import (
+    asset_path,
+    cleanup_asset,
+    create_asset_record,
+    finalize_asset_record,
+    save_thumb,
+    apply_3mf_metadata,
+)
 from ai_tagging import maybe_autotag_asset
 from config import (
     DEFAULT_MOUNT_IMPORT_EXTS,
@@ -43,14 +50,21 @@ def should_skip_mount_entry(name: str) -> bool:
     return not MOUNT_IMPORT_INCLUDE_HIDDEN and name.startswith(".")
 
 
-def scan_mount_imports() -> None:
+def scan_mount_imports(prune_missing: bool = False) -> Dict[str, Any]:
+    """Scan the mount path and index new files.
+
+    With `prune_missing=True`, mount-imported assets whose source file has
+    disappeared are removed from the library (DB row + files). Pruning is
+    skipped entirely when the mount looks unavailable (missing/unreadable),
+    so a transient network-filesystem hiccup cannot wipe the library.
+    """
     root_raw = MOUNT_IMPORT_PATH
     if not root_raw:
-        return
+        return {"imported": 0, "skipped": 0, "failed": 0, "pruned": 0, "reason": "not_configured"}
     root = Path(root_raw)
     if not root.exists() or not root.is_dir():
         print(f"[mount-import] Skipping: mount path not found: {root_raw}")
-        return
+        return {"imported": 0, "skipped": 0, "failed": 0, "pruned": 0, "reason": "mount_not_found"}
 
     allowed_exts = parse_mount_import_exts(MOUNT_IMPORT_EXTS_RAW)
     copy_files = get_mount_import_copy(MOUNT_IMPORT_COPY)
@@ -61,6 +75,7 @@ def scan_mount_imports() -> None:
     imported = 0
     skipped = 0
     failed = 0
+    pruned = 0
 
     print(f"[mount-import] Scanning {root_abs}...")
     with Session(engine) as session:
@@ -82,6 +97,7 @@ def scan_mount_imports() -> None:
             asset_ids = set(session.exec(select(Asset.id)).all())
 
         folder_cache: dict = {}
+        seen_paths: set = set()
         for dirpath, dirnames, filenames in os.walk(root_abs):
             rel_dir = Path(dirpath).relative_to(root_abs)
             dirnames[:] = [d for d in dirnames if not should_skip_mount_entry(d)]
@@ -100,6 +116,7 @@ def scan_mount_imports() -> None:
 
                 rel_path = (rel_dir / filename).as_posix() if rel_dir != Path(".") else filename
                 source_path = (root_abs / rel_path).as_posix()
+                seen_paths.add(source_path)
                 if source_path in existing_sources:
                     skipped += 1
                     continue
@@ -143,4 +160,23 @@ def scan_mount_imports() -> None:
                     cleanup_asset(asset.id)
                     failed += 1
 
-    print(f"[mount-import] Done. Imported {imported}, skipped {skipped}, failed {failed}.")
+        # Prune mount-imported assets whose source file has vanished.
+        if prune_missing:
+            prunable = list(
+                session.exec(
+                    select(Asset).where(Asset.source_path.like(f"{root_prefix}/%"))
+                ).all()
+            )
+            for asset in prunable:
+                source = Path(asset.source_path or "")
+                if asset.source_path in seen_paths:
+                    continue
+                # Double-check on disk before deleting (file could exist but be
+                # filtered out by extension changes etc.).
+                if source.exists():
+                    continue
+                cleanup_asset(asset.id)
+                pruned += 1
+
+    print(f"[mount-import] Done. Imported {imported}, skipped {skipped}, failed {failed}, pruned {pruned}.")
+    return {"imported": imported, "skipped": skipped, "failed": failed, "pruned": pruned}
