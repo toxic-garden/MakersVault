@@ -457,7 +457,7 @@ export default function Sidebar({
       <span>All Items</span>
     </button>
 
-    <div className="flex flex-col gap-0.5 flex-1 min-h-0 overflow-y-auto">
+    <div className="sidebar-scroll flex flex-col gap-0.5 flex-1 min-h-0 overflow-y-auto">
       {(childrenMap["__root"] || []).map(f => renderFolderNode(f, 0))}
       {folders.length === 0 && <div className="text-xs text-muted px-2">No folders yet</div>}
     </div>
