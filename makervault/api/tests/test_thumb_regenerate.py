@@ -61,6 +61,18 @@ def test_regenerate_rejects_non_3d(client: TestClient, auth_headers, clean_db):
     assert res.status_code == 400
 
 
+def test_assets_report_thumb_eligible_flag(client: TestClient, auth_headers, clean_db):
+    import uuid
+    # STL -> eligible; SVG is listed but not thumbnail-eligible (no render path).
+    stl_id = str(uuid.uuid4())
+    _insert_raw_3d_asset(stl_id, "model.stl", _STL)
+    svg_id = str(uuid.uuid4())
+    _insert_raw_3d_asset(svg_id, "vector.svg", b"<svg xmlns='http://www.w3.org/2000/svg'/>", mime="image/svg+xml")
+    assets = {a["id"]: a for a in client.get("/assets", headers=auth_headers).json()}
+    assert assets[stl_id]["thumb_eligible"] is True
+    assert assets[svg_id]["thumb_eligible"] is False
+
+
 def test_regenerate_requires_auth(client: TestClient, clean_db):
     res = client.post("/asset/x/thumbnail/regenerate")
     assert res.status_code == 401

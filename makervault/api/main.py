@@ -206,6 +206,7 @@ def to_out(a: Asset) -> AssetOut:
             else None
         ),
         folder_id=a.folder_id,
+        thumb_eligible=is_thumb_eligible(a.mime, (Path(a.filename).suffix or "").lower()),
     )
 
 
@@ -595,8 +596,8 @@ def regenerate_asset_thumbnail(asset_id: str, _: AuthDep = None):
             raise HTTPException(404)
         filename = asset.filename
     suffix = Path(filename).suffix.lower()
-    if suffix not in _3D_THUMB_EXTS and not is_thumb_eligible(asset.mime, filename):
-        raise HTTPException(status_code=400, detail="Thumbnail regeneration is only supported for 3D files")
+    if not is_thumb_eligible(asset.mime, suffix):
+        raise HTTPException(status_code=400, detail="Thumbnail regeneration is not supported for this file type")
     source = resolve_asset_file(asset)
     if not source:
         raise HTTPException(status_code=404, detail="Source file not found on disk")

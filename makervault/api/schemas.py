@@ -55,6 +55,7 @@ class AssetOut(BaseModel):
   url: str
   thumb_url: Optional[str]
   folder_id: Optional[str]
+  thumb_eligible: bool = False
 
 
 class ImportZipResult(BaseModel):

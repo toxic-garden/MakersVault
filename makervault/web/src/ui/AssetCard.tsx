@@ -453,23 +453,25 @@ export default function AssetCard({
               )}
             </div>
 
-            {/* Thumbnail — regenerate single asset */}
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted font-medium">
-                <ImageIcon className="w-3 h-3" />
-                <span>Thumbnail</span>
+            {/* Thumbnail — regenerate single asset (3D/image files only) */}
+            {(item.thumb_eligible ?? false) && (
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted font-medium">
+                  <ImageIcon className="w-3 h-3" />
+                  <span>Thumbnail</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="text-xs px-2 py-0.5 rounded-md border border-panel-strong text-muted hover:text-accent hover:bg-accent-soft transition-smooth shrink-0 disabled:opacity-60"
+                    onClick={() => onRegenerateThumbnail(item)}
+                    disabled={thumbBusy}
+                    title="Regenerate this file's thumbnail from the model (or the embedded 3MF plate image)"
+                  >
+                    {thumbBusy ? "Generating…" : "Regenerate thumbnail"}
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  className="text-xs px-2 py-0.5 rounded-md border border-panel-strong text-muted hover:text-accent hover:bg-accent-soft transition-smooth shrink-0 disabled:opacity-60"
-                  onClick={() => onRegenerateThumbnail(item)}
-                  disabled={thumbBusy}
-                  title="Regenerate this file's thumbnail from the model (or the embedded 3MF plate image)"
-                >
-                  {thumbBusy ? "Generating…" : "Regenerate thumbnail"}
-                </button>
-              </div>
-            </div>
+            )}
 
             {/* AI tags row */}
             <div className="flex flex-col gap-1">

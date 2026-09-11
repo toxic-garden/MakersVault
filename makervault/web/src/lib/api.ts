@@ -49,6 +49,7 @@ export type Asset = {
   url: string; // relative to API host
   thumb_url?: string | null; // relative to API host
   folder_id?: string | null;
+  thumb_eligible?: boolean;
 };
 
 export type ImportInspectInfo = {
