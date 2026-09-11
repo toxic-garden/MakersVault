@@ -507,8 +507,8 @@ export default function Settings({
               <div>
                 <div className="text-lg font-semibold">Endpoint</div>
                 <p className="text-sm opacity-70">
-                  Base URL of an OpenAI-compatible API (e.g. http://gaming.toxicgarden.de:11434/v1).
-                  The path /chat/completions is appended automatically.
+                  Base URL of an OpenAI-compatible API (e.g. http://localhost:11434/v1 or
+                  https://api.openai.com/v1). The path /chat/completions is appended automatically.
                 </p>
               </div>
               <div className="flex flex-col gap-1">
