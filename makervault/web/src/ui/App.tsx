@@ -65,6 +65,12 @@ export default function App() {
     root.classList.toggle("theme-blue", resolvedTheme === "blue");
   }, [resolvedTheme]);
   React.useEffect(() => { (async ()=> setHealth(await apiHealth()))(); }, [settings.network.publicUrl]);
+  // Periodic health check so "API unreachable" clears itself once the API is
+  // back (e.g. after a dev-server restart mid-session).
+  React.useEffect(() => {
+    const timer = window.setInterval(async () => setHealth(await apiHealth()), 10000);
+    return () => window.clearInterval(timer);
+  }, [settings.network.publicUrl]);
   React.useEffect(() => {
     saveSettings(settings);
   }, [settings]);
