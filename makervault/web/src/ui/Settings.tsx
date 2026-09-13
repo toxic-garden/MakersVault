@@ -441,7 +441,9 @@ export default function Settings({
     if (!aiConfig) return;
     const next = !aiConfig[flag];
     setAiConfig({ ...aiConfig, [flag]: next });
-    await saveAiSettings({ [flag]: next });
+    // saveAiSettings expects camelCase override keys (jsonMode/reviewMode/autoTag).
+    const camel = flag === "json_mode" ? "jsonMode" : flag === "review_mode" ? "reviewMode" : "autoTag";
+    await saveAiSettings({ [camel]: next } as Partial<{ jsonMode: boolean; reviewMode: boolean; autoTag: boolean }>);
   };
 
   React.useEffect(() => {
