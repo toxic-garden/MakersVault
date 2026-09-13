@@ -9,6 +9,7 @@ import { clearToken, isTokenLocallyExpired, readToken, storeToken } from "../lib
 import { type AppSettings, type ResolvedTheme, loadSettings, resolveTheme, saveSettings } from "../lib/settings";
 import { UploadProgressInfo } from "../lib/uploadTree";
 import UploadProgressPanel from "./UploadProgressPanel";
+import GlobalJobMonitor, { rememberJobId } from "./GlobalJobMonitor";
 const DEFAULT_REFRESH_SECONDS = 6 * 60 * 60; // 6 hours
 
 const logoForTheme = (theme: ResolvedTheme) => {
@@ -238,6 +239,7 @@ export default function App() {
             setUploadProgress([]);
           }}
         />
+        <GlobalJobMonitor onFinished={handleAssetsChanged} />
       </div>
     );
   }

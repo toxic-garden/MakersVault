@@ -15,6 +15,7 @@ import {
   type AiSettings,
 } from "../lib/api";
 import { entriesFromFileList, uploadEntriesToFolder, type UploadEntry } from "../lib/uploadTree";
+import { rememberJobId } from "./GlobalJobMonitor";
 
 type Props = {
   settings: AppSettings;
@@ -327,6 +328,7 @@ export default function Settings({
     setThumbJob(null);
     try {
       const started = await generateMissingThumbnails();
+      rememberJobId(started.job_id);
       const latest = await pollAdminJob(started.job_id, setThumbJob);
       // Job is done; refresh the asset grid so new thumbnails appear.
       onAssetsChanged?.();
@@ -350,6 +352,7 @@ export default function Settings({
     setRescanJob(null);
     try {
       const started = await rescanMount();
+      rememberJobId(started.job_id);
       const latest = await pollAdminJob(started.job_id, setRescanJob);
       onAssetsChanged?.();
       onFoldersChanged?.();
