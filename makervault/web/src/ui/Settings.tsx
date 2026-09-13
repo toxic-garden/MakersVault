@@ -296,14 +296,27 @@ export default function Settings({
       setMountSaving(false);
     }
   };
-  /** Poll an admin job until it finishes; onStatus receives every update. */
+  /** Poll an admin job until it finishes; onStatus receives every update.
+   *  Transient poll failures (backend restart, brief proxy error) are
+   *  tolerated for up to 30s — a running background job outlives them. */
   const pollAdminJob = async (jobId: string, onStatus: (s: AdminJobStatus) => void) => {
     let latest: AdminJobStatus | null = null;
+    let consecutiveFailures = 0;
     for (let i = 0; i < 7200; i++) {
-      const status = await getAdminJob(jobId);
-      latest = status;
-      onStatus(status);
-      if (status.status === "done" || status.status === "error") break;
+      let status: AdminJobStatus | null = null;
+      try {
+        status = await getAdminJob(jobId);
+        consecutiveFailures = 0;
+      } catch (err) {
+        if (err instanceof UnauthorizedError) throw err;
+        consecutiveFailures += 1;
+        if (consecutiveFailures > 30) throw err;
+      }
+      if (status) {
+        latest = status;
+        onStatus(status);
+        if (status.status === "done" || status.status === "error") break;
+      }
       await new Promise(r => setTimeout(r, 1000));
     }
     return latest;
