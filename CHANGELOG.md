@@ -3,6 +3,36 @@
 All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased] — 2026-09-13
+
+Additions from the second working session: job monitoring and cancellation
+across views, plus several bug fixes found during live testing with a ~2,200
+asset mounted library.
+
+### Added
+
+- **Cooperative job cancellation** — `POST /admin/jobs/{job_id}/cancel` sets a
+  cancel flag; workers check it between items, finish the current render, then
+  stop with status `cancelled` and a summary ("Cancelled after X of Y
+  item(s)"). Exposed as a × button on the floating job chip (409 when the job
+  already finished, 404 for unknown jobs).
+- **Global job progress** — a floating status chip (bottom right, mounted on
+  App level) shows the running admin job's progress in every view, not only in
+  Settings. Survives page reloads via `sessionStorage`; finished jobs show a
+  dismissable summary for a few seconds, then the library refreshes.
+- **Self-healing API banner** — a periodic (10s) health check clears the
+  "API unreachable" banner automatically once the backend is back.
+
+### Fixed
+
+- **AI behavior toggles** ("Review before applying", "Structured JSON
+  responses", "Auto tag new uploads") did not persist: `toggleAiFlag` passed a
+  snake_case override key that `saveAiSettings` read as camelCase, so the
+  stored value never changed and the checkbox snapped back.
+- **Job polling** aborted on the first transient poll failure (e.g. a backend
+  restart mid-run) and surfaced an error although the background job survived;
+  polling now tolerates up to 30s of consecutive failures.
+
 ## [Unreleased] — 2026-09-11
 
 This release bundles the feature work from September 2026. It extends assets
