@@ -689,6 +689,15 @@ export async function getAdminJob(jobId: string): Promise<AdminJobStatus> {
   return res.json();
 }
 
+export async function cancelAdminJob(jobId: string): Promise<AdminJobStatus> {
+  const res = await fetch(`${apiBase()}/admin/jobs/${encodeURIComponent(jobId)}/cancel`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  assertOk(res, "Failed to cancel job");
+  return res.json();
+}
+
 export async function regenerateAssetThumbnail(assetId: string): Promise<Asset> {
   const res = await fetch(`${apiBase()}/asset/${assetId}/thumbnail/regenerate`, {
     method: "POST",

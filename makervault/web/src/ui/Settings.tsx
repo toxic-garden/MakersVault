@@ -316,7 +316,7 @@ export default function Settings({
       if (status) {
         latest = status;
         onStatus(status);
-        if (status.status === "done" || status.status === "error") break;
+        if (status.status === "done" || status.status === "error" || status.status === "cancelled") break;
       }
       await new Promise(r => setTimeout(r, 1000));
     }
@@ -1241,6 +1241,9 @@ export default function Settings({
 /** Shared progress/status display for admin background jobs. */
 function JobStatusView({ job }: { job: AdminJobStatus | null }) {
   if (!job) return null;
+  if (job.status === "cancelled") {
+    return <span className="text-xs font-medium text-muted">{job.message || "Cancelled"}</span>;
+  }
   if (job.status === "done") {
     return (
       <span className="text-xs font-medium text-muted">

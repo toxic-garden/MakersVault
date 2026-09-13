@@ -32,7 +32,7 @@ from db import STORAGE, THUMBS, engine, ensure_folder_parent_column, ensure_asse
 from file_utils import build_import_filename, mime_from_content_type, sanitize_filename
 from folder_service import validate_parent_folder
 from import_service import download_import_to_temp, import_asset_from_url, open_import_response
-from job_tracker import _JOBS, get_job, start_job, update_job
+from job_tracker import _JOBS, _LOCK, CANCELLED, cancel_job, get_job, should_stop, start_job, update_job
 from mount_import import scan_mount_imports
 from ai_tagging import (
   AI_API_KEY_KEY,
@@ -583,7 +583,11 @@ def _thumbnail_backfill_worker(job_id: str) -> None:
     update_job(job_id, total=len(eligible), skipped=skipped)
     generated = 0
     failed = 0
-    for processed, asset in enumerate(eligible, start=1):
+    processed = 0
+    for asset in eligible:
+        if should_stop(job_id):
+            break
+        processed += 1
         try:
             source = resolve_asset_file(asset)
             if not source:
@@ -600,6 +604,11 @@ def _thumbnail_backfill_worker(job_id: str) -> None:
             failed += 1
         update_job(job_id, processed=processed, generated=generated, failed=failed)
 
+    if should_stop(job_id):
+        update_job(job_id, status=CANCELLED, finished_at=time.time(),
+                   message=f"Cancelled after {processed} of {len(eligible)} item(s).")
+        _prune_jobs()
+        return
     update_job(job_id, status="done", finished_at=time.time())
     _prune_jobs()
 
@@ -618,6 +627,25 @@ def get_admin_job_status(job_id: str, _: AuthDep = None):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+@app.post("/admin/jobs/{job_id}/cancel")
+def cancel_admin_job(job_id: str, _: AuthDep = None):
+    """Request cancellation of a running background job.
+
+    Cancellation is cooperative: the worker finishes its current item (a
+    thumbnail render can take a few seconds), then stops without processing
+    further items.
+    """
+    with _LOCK:
+        job = _JOBS.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if job.status != "running":
+            raise HTTPException(status_code=409, detail=f"Job is not running (status: {job.status})")
+    if not cancel_job(job_id):
+        raise HTTPException(status_code=409, detail="Job could not be cancelled")
+    return get_job(job_id)
 
 
 @app.post("/asset/{asset_id}/thumbnail/regenerate", response_model=AssetOut)

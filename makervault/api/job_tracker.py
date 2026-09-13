@@ -4,6 +4,10 @@ Jobs run on a background thread (daemon) and their progress is readable via
 `get_job`. In-memory only (no persistence): a running job is lost on server
 restart, which is fine for admin backfill tasks. The same process serves both
 the start and status endpoints (single-worker uvicorn in the compose stack).
+
+Cancellation is cooperative: `cancel_job` sets a flag + an Event, and the
+worker checks `should_stop(job_id)` between work items. A cancelled job
+reports status "cancelled".
 """
 from __future__ import annotations
 
@@ -13,11 +17,13 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional
 
+CANCELLED = "cancelled"
+
 
 @dataclass
 class Job:
     id: str
-    status: str = "running"  # running | done | error
+    status: str = "running"  # running | done | error | cancelled
     total: int = 0
     processed: int = 0
     generated: int = 0
@@ -27,6 +33,7 @@ class Job:
     message: str = ""
     started_at: float = field(default_factory=time.time)
     finished_at: Optional[float] = None
+    cancel_event: threading.Event = field(default_factory=threading.Event, repr=False)
 
 
 _JOBS: Dict[str, Job] = {}
@@ -84,3 +91,27 @@ def get_job(job_id: str) -> Optional[dict]:
     with _LOCK:
         job = _JOBS.get(job_id)
         return _snapshot(job) if job else None
+
+
+def should_stop(job_id: str) -> bool:
+    """True when the job was asked to cancel. Workers check this between items."""
+    with _LOCK:
+        job = _JOBS.get(job_id)
+        return job.cancel_event.is_set() if job else True
+
+
+def cancel_job(job_id: str) -> bool:
+    """Request cancellation of a running job. Returns False if unknown/finished.
+
+    The job's status switches to "cancelled" immediately (the worker thread
+    finishes its current item, then exits without further updates).
+    """
+    with _LOCK:
+        job = _JOBS.get(job_id)
+        if not job or job.status != "running":
+            return False
+        job.cancel_event.set()
+        job.status = CANCELLED
+        job.finished_at = time.time()
+        job.message = f"Cancelled after {job.processed} of {job.total} item(s)."
+        return True

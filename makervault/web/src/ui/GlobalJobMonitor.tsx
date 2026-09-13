@@ -1,6 +1,6 @@
 import React from "react";
-import { Loader2 } from "lucide-react";
-import { getAdminJob, type AdminJobStatus } from "../lib/api";
+import { Loader2, X } from "lucide-react";
+import { cancelAdminJob, getAdminJob, type AdminJobStatus } from "../lib/api";
 
 const STORAGE_KEY = "makersvault_active_job";
 
@@ -34,6 +34,7 @@ type Props = {
  */
 export default function GlobalJobMonitor({ onFinished }: Props) {
   const [status, setStatus] = React.useState<AdminJobStatus | null>(null);
+  const [cancelling, setCancelling] = React.useState(false);
   const doneRef = React.useRef(false);
 
   React.useEffect(() => {
@@ -69,8 +70,9 @@ export default function GlobalJobMonitor({ onFinished }: Props) {
   }, []);
 
   if (!status) return null;
-  if (status.status === "done" || status.status === "error") {
+  if (status.status === "done" || status.status === "error" || status.status === "cancelled") {
     const isError = status.status === "error";
+    const isCancelled = status.status === "cancelled";
     return (
       <div
         className={`fixed bottom-3 right-3 z-40 flex items-center gap-2 px-3 py-2 rounded-lg border shadow-md bg-panel-strong text-xs ${
@@ -82,7 +84,7 @@ export default function GlobalJobMonitor({ onFinished }: Props) {
           <span className="font-medium text-red-500">{status.message || "Job failed"}</span>
         ) : (
           <span className="font-medium text-muted">
-            {status.message || `Done — ${status.generated} ok, ${status.failed} failed`}
+            {status.message || (isCancelled ? "Cancelled" : `Done — ${status.generated} ok, ${status.failed} failed`)}
           </span>
         )}
         <button className="text-muted hover:text-foreground ml-1" onClick={() => setStatus(null)} aria-label="Dismiss">×</button>
@@ -104,6 +106,25 @@ export default function GlobalJobMonitor({ onFinished }: Props) {
           <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${pct}%` }} />
         </div>
       </div>
+      <button
+        className="shrink-0 text-muted hover:text-red-500 disabled:opacity-50"
+        disabled={cancelling}
+        onClick={async () => {
+          setCancelling(true);
+          try {
+            const s = await cancelAdminJob(status.id);
+            setStatus(s);
+          } catch {
+            // ignore — the poll loop picks up the final state
+          } finally {
+            setCancelling(false);
+          }
+        }}
+        title="Stop this job after the current item"
+        aria-label="Cancel job"
+      >
+        <X className="w-4 h-4" />
+      </button>
     </div>
   );
 }
