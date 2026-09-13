@@ -3,7 +3,7 @@
 All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased] — 2026-09-13
+## — 2026-09-13
 
 Additions from the second working session: job monitoring and cancellation
 across views, plus several bug fixes found during live testing with a ~2,200
@@ -33,7 +33,7 @@ asset mounted library.
   restart mid-run) and surfaced an error although the background job survived;
   polling now tolerates up to 30s of consecutive failures.
 
-## [Unreleased] — 2026-09-11
+## — 2026-09-11
 
 This release bundles the feature work from September 2026. It extends assets
 with AI tagging and richer metadata, adds server-side indexing for an existing
